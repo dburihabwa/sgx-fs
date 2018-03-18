@@ -1,8 +1,8 @@
 TARGET = fusegx
 CC ?= gcc
 CFLAGS = -Wextra -Wall -pedantic -c
-CFLAGS += $(shell pkg-config fuse --cflags)
-INCLUDE = $(shell pkg-config fuse --libs)
+CFLAGS += $(shell pkg-config fuse3 --cflags)
+INCLUDE = $(shell pkg-config fuse3 --libs)
 
 OBJECTS=fusegx.o
 
