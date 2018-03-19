@@ -1,455 +1,329 @@
-/*
-  FUSE: Filesystem in Userspace
-  Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
-  Copyright (C) 2011       Sebastian Pipping <sebastian@pipping.org>
-
-  This program can be distributed under the terms of the GNU GPL.
-  See the file COPYING.
-*/
-
-/** @file
- *
- * This file system mirrors the existing file system hierarchy of the
- * system, starting at the root file system. This is implemented by
- * just "passing through" all requests to the corresponding user-space
- * libc functions. Its performance is terrible.
- *
- * Compile with
- *
- *     gcc -Wall passthrough.c `pkg-config fuse3 --cflags --libs` -o passthrough
- *
- * ## Source code ##
- * \include passthrough.c
+/**
+ * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
+ * https://github.com/pfisterer/fuse-ramfs
  */
+#include <iostream>
+#include <map>
+#include <string>
+using namespace std;
 
-#define FUSE_USE_VERSION 31
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
+typedef map<int, unsigned char> FileContents;
+typedef map<string, FileContents> FileMap;
+static FileMap files;
 
-#ifdef linux
-/* For pread()/pwrite()/utimensat() */
-#define _XOPEN_SOURCE 700
-#endif
+static bool file_exists(string filename) {
+  bool b = files.find(filename) != files.end();
+  cout << "file_exists: " << filename << ": " << b << endl;
+  return b;
+}
 
-#include <dirent.h>
+FileContents to_map(string data) {
+  FileContents data_map;
+  int i = 0;
+
+  for (string::iterator it = data.begin(); it < data.end(); ++it)
+    data_map[i++] = *it;
+
+  return data_map;
+}
+
+static string strip_leading_slash(string filename) {
+  bool starts_with_slash = false;
+
+  if (filename.size() > 0)
+    if (filename[0] == '/')
+      starts_with_slash = true;
+
+  return starts_with_slash ? filename.substr(1, string::npos) : filename;
+}
+
+extern "C" {
+
+#define FUSE_USE_VERSION 26
 #include <errno.h>
 #include <fcntl.h>
 #include <fuse.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
-#ifdef HAVE_SETXATTR
-#include <sys/xattr.h>
-#endif
 
-static void *xmp_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
-  (void)conn;
-  cfg->use_ino = 1;
 
-  /* Pick up changes from lower filesystem right away. This is
-     also necessary for better hardlink support. When the kernel
-     calls the unlink() handler, it does not know the inode of
-     the to-be-removed entry and can therefore not invalidate
-     the cache of the associated inode - resulting in an
-     incorrect st_nlink value being reported for any remaining
-     hardlinks to this inode. */
-  cfg->entry_timeout = 0;
-  cfg->attr_timeout = 0;
-  cfg->negative_timeout = 0;
 
-  return NULL;
-}
+static int ramfs_getattr(const char *path, struct stat *stbuf) {
+  string filename = path;
+  string stripped_slash = strip_leading_slash(filename);
+  int res = 0;
+  memset(stbuf, 0, sizeof(struct stat));
 
-static int xmp_getattr(const char *path, struct stat *stbuf,
-                       struct fuse_file_info *fi) {
-  (void)fi;
-  int res;
+  stbuf->st_uid = getuid();
+  stbuf->st_gid = getgid();
+  stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
-  res = lstat(path, stbuf);
-  if (res == -1)
-    return -errno;
+  if (filename == "/") { // Attribute des Wurzelverzeichnisses
+    cout << "ramfs_getattr(" << filename << "): Returning attributes for /"
+         << endl;
+    stbuf->st_mode = S_IFDIR | 0777;
+    stbuf->st_nlink = 2;
 
-  return 0;
-}
+  } else if (file_exists(
+                 stripped_slash)) { // Eine existierende Datei wird gelesen
+    cout << "ramfs_getattr(" << stripped_slash << "): Returning attributes"
+         << endl;
+    stbuf->st_mode = S_IFREG | 0777;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = files[stripped_slash].size();
 
-static int xmp_access(const char *path, int mask) {
-  int res;
-
-  res = access(path, mask);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_readlink(const char *path, char *buf, size_t size) {
-  int res;
-
-  res = readlink(path, buf, size - 1);
-  if (res == -1)
-    return -errno;
-
-  buf[res] = '\0';
-  return 0;
-}
-
-static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                       off_t offset, struct fuse_file_info *fi,
-                       enum fuse_readdir_flags flags) {
-  DIR *dp;
-  struct dirent *de;
-
-  (void)offset;
-  (void)fi;
-  (void)flags;
-
-  dp = opendir(path);
-  if (dp == NULL)
-    return -errno;
-
-  while ((de = readdir(dp)) != NULL) {
-    struct stat st;
-    memset(&st, 0, sizeof(st));
-    st.st_ino = de->d_ino;
-    st.st_mode = de->d_type << 12;
-    if (filler(buf, de->d_name, &st, 0, (fuse_fill_dir_flags) 0))
-      break;
+  } else { // Datei nicht vorhanden
+    cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
+    res = -ENOENT;
   }
 
-  closedir(dp);
-  return 0;
+  return res;
 }
 
-static int xmp_mknod(const char *path, mode_t mode, dev_t rdev) {
-  int res;
+/** Liest den Inhalt eines Verzeichnisses aus */
+static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                         off_t offset, struct fuse_file_info *fi) {
 
-  /* On Linux this could just be 'mknod(path, mode, rdev)' but this
-     is more portable */
-  if (S_ISREG(mode)) {
-    res = open(path, O_CREAT | O_EXCL | O_WRONLY, mode);
-    if (res >= 0)
-      res = close(res);
-  } else if (S_ISFIFO(mode))
-    res = mkfifo(path, mode);
-  else
-    res = mknod(path, mode, rdev);
-  if (res == -1)
-    return -errno;
+  // Dateisystem kennt keine Unterverzeichnisse
+  if (strcmp(path, "/") != 0) {
+    cout << "ramfs_readdir(" << path << "): Only / allowed" << endl;
+    return -ENOENT;
+  }
 
-  return 0;
-}
+  // Diese Dateien m�ssen immer existieren
+  filler(buf, ".", NULL, 0);
+  filler(buf, "..", NULL, 0);
 
-static int xmp_mkdir(const char *path, mode_t mode) {
-  int res;
-
-  res = mkdir(path, mode);
-  if (res == -1)
-    return -errno;
+  // F�ge alle Dateien hinzu
+  for (FileMap::iterator it = files.begin(); it != files.end(); it++)
+    filler(buf, it->first.c_str(), NULL, 0);
 
   return 0;
 }
 
-static int xmp_unlink(const char *path) {
-  int res;
+/** "�ffnet" eine Datei */
+static int ramfs_open(const char *path, struct fuse_file_info *fi) {
+  string filename = strip_leading_slash(path);
 
-  res = unlink(path);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_rmdir(const char *path) {
-  int res;
-
-  res = rmdir(path);
-  if (res == -1)
-    return -errno;
+  // Datei nicht vorhanden
+  if (!file_exists(filename)) {
+    cout << "ramfs_readdir(" << filename << "): Not found" << endl;
+    return -ENOENT;
+  }
 
   return 0;
 }
 
-static int xmp_symlink(const char *from, const char *to) {
-  int res;
-
-  res = symlink(from, to);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_rename(const char *from, const char *to, unsigned int flags) {
-  int res;
-
-  if (flags)
-    return -EINVAL;
-
-  res = rename(from, to);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_link(const char *from, const char *to) {
-  int res;
-
-  res = link(from, to);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_chmod(const char *path, mode_t mode, struct fuse_file_info *fi) {
-  (void)fi;
-  int res;
-
-  res = chmod(path, mode);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_chown(const char *path, uid_t uid, gid_t gid,
-                     struct fuse_file_info *fi) {
-  (void)fi;
-  int res;
-
-  res = lchown(path, uid, gid);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-static int xmp_truncate(const char *path, off_t size,
-                        struct fuse_file_info *fi) {
-  int res;
-
-  if (fi != NULL)
-    res = ftruncate(fi->fh, size);
-  else
-    res = truncate(path, size);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-
-#ifdef HAVE_UTIMENSAT
-static int xmp_utimens(const char *path, const struct timespec ts[2],
-                       struct fuse_file_info *fi) {
-  (void)fi;
-  int res;
-
-  /* don't use utime/utimes since they follow symlinks */
-  res = utimensat(0, path, ts, AT_SYMLINK_NOFOLLOW);
-  if (res == -1)
-    return -errno;
-
-  return 0;
-}
-#endif
-
-static int xmp_create(const char *path, mode_t mode,
+/* Liest (Teile einer) Datei */
+static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
-  int res;
+  string filename = strip_leading_slash(path);
 
-  res = open(path, fi->flags, mode);
-  if (res == -1)
-    return -errno;
+  // Datei nicht vorhanden
+  if (!file_exists(filename)) {
+    cout << "ramfs_read(" << filename << "): Not found" << endl;
+    return -ENOENT;
+  }
 
-  fi->fh = res;
+  // Datei existiert. Lese in Puffer
+  FileContents &file = files[filename];
+  size_t len = file.size();
+
+  // Pr�fe, wieviele Bytes ab welchem Offset gelesen werden k�nnen
+  if (offset < len) {
+    if (offset + size > len) {
+      cout << "ramfs_read(" << filename << "): offset(" << offset << ") + size("
+           << size << ") > len(" << len << "), setting to " << len - offset
+           << endl;
+
+      size = len - offset;
+    }
+
+    cout << "ramfs_read(" << filename << "): Reading " << size << " bytes"
+         << endl;
+    for (size_t i = 0; i < size; ++i)
+      buf[i] = file[offset + i];
+
+  } else { // Offset war groesser als die max. Groesse der Datei
+    return -EINVAL;
+  }
+
+  return size;
+}
+
+/** Schreibt Daten in eine (offene) Datei */
+int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
+                struct fuse_file_info *) {
+  string filename = strip_leading_slash(path);
+
+  // Datei nicht vorhanden
+  if (!file_exists(filename)) {
+    cout << "ramfs_write(" << filename << "): Not found" << endl;
+    return -ENOENT;
+  }
+
+  // Datei existiert. Schreibe in Puffer
+  cout << "ramfs_write(" << filename << "): Writing " << size
+       << " bytes startting with offset " << offset << endl;
+  FileContents &file = files[filename];
+
+  for (size_t i = 0; i < size; ++i)
+    file[offset + i] = data[i];
+
+  return size;
+}
+
+/** L�scht eine Datei */
+int ramfs_unlink(const char *pathname) {
+  files.erase(strip_leading_slash(pathname));
   return 0;
 }
 
-static int xmp_open(const char *path, struct fuse_file_info *fi) {
-  int res;
+/** Erzeugt ein neues Dateisystemelement */
+int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
+  string filename = strip_leading_slash(path);
 
-  res = open(path, fi->flags);
-  if (res == -1)
-    return -errno;
+  // Datei bereits vorhanden
+  if (file_exists(filename)) {
+    cout << "ramfs_create(" << filename << "): Already exists" << endl;
+    return -EEXIST;
+  }
 
-  fi->fh = res;
+  // Es wird versucht, etwas anderes als eine normale Datei anzulegen
+  if ((mode & S_IFREG) == 0) {
+    cout << "ramfs_create(" << filename << "): Only files may be created"
+         << endl;
+    return -EINVAL;
+  }
+
+  cout << "ramfs_create(" << filename << "): Creating empty file" << endl;
+  files[filename] = to_map("");
   return 0;
 }
 
-static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
-                    struct fuse_file_info *fi) {
-  int fd;
-  int res;
-
-  if (fi == NULL)
-    fd = open(path, O_RDONLY);
-  else
-    fd = fi->fh;
-
-  if (fd == -1)
-    return -errno;
-
-  res = pread(fd, buf, size, offset);
-  if (res == -1)
-    res = -errno;
-
-  if (fi == NULL)
-    close(fd);
-  return res;
+int ramfs_fgetattr(const char *path, struct stat *stbuf,
+                   struct fuse_file_info *) {
+  cout << "ramfs_fgetattr(" << path << "): Delegating to ramfs_getattr" << endl;
+  return ramfs_getattr(path, stbuf);
 }
 
-static int xmp_write(const char *path, const char *buf, size_t size,
-                     off_t offset, struct fuse_file_info *fi) {
-  int fd;
-  int res;
-
-  (void)fi;
-  if (fi == NULL)
-    fd = open(path, O_WRONLY);
-  else
-    fd = fi->fh;
-
-  if (fd == -1)
-    return -errno;
-
-  res = pwrite(fd, buf, size, offset);
-  if (res == -1)
-    res = -errno;
-
-  if (fi == NULL)
-    close(fd);
-  return res;
-}
-
-static int xmp_statfs(const char *path, struct statvfs *stbuf) {
-  int res;
-
-  res = statvfs(path, stbuf);
-  if (res == -1)
-    return -errno;
-
+int ramfs_opendir(const char *path, struct fuse_file_info *) {
+  cout << "ramfs_opendir(" << path << "): access granted" << endl;
   return 0;
 }
 
-static int xmp_release(const char *path, struct fuse_file_info *fi) {
-  (void)path;
-  close(fi->fh);
+int ramfs_access(const char *path, int) {
+  cout << "ramfs_access(" << path << ") access granted" << endl;
   return 0;
 }
 
-static int xmp_fsync(const char *path, int isdatasync,
-                     struct fuse_file_info *fi) {
-  /* Just a stub.	 This method is optional and can safely be left
-     unimplemented */
+int ramfs_truncate(const char *path, off_t length) {
+  string filename = strip_leading_slash(path);
 
-  (void)path;
-  (void)isdatasync;
-  (void)fi;
-  return 0;
+  // Datei nicht vorhanden
+  if (!file_exists(filename)) {
+    cout << "ramfs_truncate(" << filename << "): Not found" << endl;
+    return -ENOENT;
+  }
+
+  FileContents &file = files[filename];
+
+  if (file.size() > length) {
+    cout << "ramfs_truncate(" << filename << "): Truncating current size ("
+         << file.size() << ") to (" << length << ")" << endl;
+    file.erase(file.find(length), file.end());
+
+  } else if (file.size() < length) {
+    cout << "ramfs_truncate(" << filename << "): Enlarging current size ("
+         << file.size() << ") to (" << length << ")" << endl;
+
+    for (int i = file.size(); i < length; ++i)
+      file[i] = '\0';
+  }
+
+  return -EINVAL;
 }
 
-#ifdef HAVE_POSIX_FALLOCATE
-static int xmp_fallocate(const char *path, int mode, off_t offset, off_t length,
-                         struct fuse_file_info *fi) {
-  int fd;
-  int res;
-
-  (void)fi;
-
-  if (mode)
-    return -EOPNOTSUPP;
-
-  if (fi == NULL)
-    fd = open(path, O_WRONLY);
-  else
-    fd = fi->fh;
-
-  if (fd == -1)
-    return -errno;
-
-  res = -posix_fallocate(fd, offset, length);
-
-  if (fi == NULL)
-    close(fd);
-  return res;
+int ramfs_mknod(const char *path, mode_t mode, dev_t dev) {
+  cout << "ramfs_mknod not implemented" << endl;
+  return -EINVAL;
 }
-#endif
-
-#ifdef HAVE_SETXATTR
-/* xattr operations are optional and can safely be left unimplemented */
-static int xmp_setxattr(const char *path, const char *name, const char *value,
-                        size_t size, int flags) {
-  int res = lsetxattr(path, name, value, size, flags);
-  if (res == -1)
-    return -errno;
-  return 0;
+int ramfs_mkdir(const char *, mode_t) {
+  cout << "ramfs_mkdir not implemented" << endl;
+  return -EINVAL;
 }
-
-static int xmp_getxattr(const char *path, const char *name, char *value,
-                        size_t size) {
-  int res = lgetxattr(path, name, value, size);
-  if (res == -1)
-    return -errno;
-  return res;
+int ramfs_rmdir(const char *) {
+  cout << "ramfs_rmdir not implemented" << endl;
+  return -EINVAL;
 }
-
-static int xmp_listxattr(const char *path, char *list, size_t size) {
-  int res = llistxattr(path, list, size);
-  if (res == -1)
-    return -errno;
-  return res;
+int ramfs_symlink(const char *, const char *) {
+  cout << "ramfs_symlink not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_rename(const char *, const char *) {
+  cout << "ramfs_rename not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_link(const char *, const char *) {
+  cout << "ramfs_link not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_chmod(const char *, mode_t) {
+  cout << "ramfs_chmod not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_chown(const char *, uid_t, gid_t) {
+  cout << "ramfs_chown not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_utime(const char *, struct utimbuf *) {
+  cout << "ramfs_utime not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_utimens(const char *, const struct timespec tv[2]) {
+  cout << "ramfs_utimens not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_bmap(const char *, size_t blocksize, uint64_t *idx) {
+  cout << "ramfs_bmap not implemented" << endl;
+  return -EINVAL;
+}
+int ramfs_setxattr(const char *, const char *, const char *, size_t, int) {
+  cout << "ramfs_setxattr not implemented" << endl;
+  return -EINVAL;
 }
 
-static int xmp_removexattr(const char *path, const char *name) {
-  int res = lremovexattr(path, name);
-  if (res == -1)
-    return -errno;
-  return 0;
+static struct fuse_operations ramfs_oper;
+
+int main(int argc, char **argv) {
+  ramfs_oper.getattr = ramfs_getattr;
+  ramfs_oper.readdir = ramfs_readdir;
+  ramfs_oper.open = ramfs_open;
+  ramfs_oper.read = ramfs_read;
+  ramfs_oper.mknod = ramfs_mknod;
+  ramfs_oper.write = ramfs_write;
+  ramfs_oper.unlink = ramfs_unlink;
+
+  ramfs_oper.setxattr = ramfs_setxattr;
+  ramfs_oper.mkdir = ramfs_mkdir;
+  ramfs_oper.rmdir = ramfs_rmdir;
+  ramfs_oper.symlink = ramfs_symlink;
+  ramfs_oper.rename = ramfs_rename;
+  ramfs_oper.link = ramfs_link;
+  ramfs_oper.chmod = ramfs_chmod;
+  ramfs_oper.chown = ramfs_chown;
+  ramfs_oper.truncate = ramfs_truncate;
+  ramfs_oper.utime = ramfs_utime;
+  ramfs_oper.opendir = ramfs_opendir;
+  ramfs_oper.access = ramfs_access;
+  ramfs_oper.create = ramfs_create;
+  ramfs_oper.fgetattr = ramfs_fgetattr;
+  ramfs_oper.utimens = ramfs_utimens;
+  ramfs_oper.bmap = ramfs_bmap;
+
+  return fuse_main(argc, argv, &ramfs_oper, NULL);
 }
-#endif //HAVE_SETXATTR
-
-static struct fuse_operations xmp_oper;
-
-int main(int argc, char *argv[]) {
-  umask(0);
-  xmp_oper.init = xmp_init;
-  xmp_oper.getattr = xmp_getattr;
-  xmp_oper.access = xmp_access;
-  xmp_oper.readlink = xmp_readlink;
-  xmp_oper.readdir = xmp_readdir;
-  xmp_oper.mknod = xmp_mknod;
-  xmp_oper.mkdir = xmp_mkdir;
-  xmp_oper.symlink = xmp_symlink;
-  xmp_oper.unlink = xmp_unlink;
-  xmp_oper.rmdir = xmp_rmdir;
-  xmp_oper.rename = xmp_rename;
-  xmp_oper.link = xmp_link;
-  xmp_oper.chmod = xmp_chmod;
-  xmp_oper.chown = xmp_chown;
-  xmp_oper.truncate = xmp_truncate;
-  #ifdef HAVE_UTIMENSAT
-  xmp_oper.utimens = xmp_utimens;
-  #endif // HAVE_UTIMENSAT
-  xmp_oper.open = xmp_open;
-  xmp_oper.create = xmp_create;
-  xmp_oper.read = xmp_read;
-  xmp_oper.write = xmp_write;
-  xmp_oper.statfs = xmp_statfs;
-  xmp_oper.release = xmp_release;
-  xmp_oper.fsync = xmp_fsync;
-  #ifdef HAVE_POSIX_FALLOCATE
-  xmp_oper.fallocate = xmp_fallocate;
-  #endif // HAVE_POSIX_FALLOCATE
-  #ifdef HAVE_SETXATTR
-  xmp_oper.setxattr = xmp_setxattr;
-  xmp_oper.getxattr = xmp_getxattr;
-  xmp_oper.listxattr = xmp_listxattr;
-  xmp_oper.removexattr = xmp_removexattr;
-  #endif // HAVE_SETXATTR
-  return fuse_main(argc, argv, &xmp_oper, NULL);
 }

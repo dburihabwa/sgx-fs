@@ -1,8 +1,8 @@
 TARGET = fusegx
-CC = g++
+CC = clang++-3.8
 CFLAGS = -Wextra -Wall -pedantic -c
-CFLAGS += $(shell pkg-config fuse3 --cflags)
-INCLUDE = $(shell pkg-config fuse3 --libs)
+CFLAGS += $(shell pkg-config fuse --cflags)
+INCLUDE = $(shell pkg-config fuse --libs)
 
 OBJECTS=fusegx.o
 
