@@ -7,7 +7,6 @@
 #include <string>
 using namespace std;
 
-
 typedef map<int, unsigned char> FileContents;
 typedef map<string, FileContents> FileMap;
 static FileMap files;
@@ -49,8 +48,6 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
-
-
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
   string filename = path;
   string stripped_slash = strip_leading_slash(filename);
@@ -61,21 +58,20 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
   stbuf->st_gid = getgid();
   stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
-  if (filename == "/") { // Attribute des Wurzelverzeichnisses
+  if (filename == "/") {
     cout << "ramfs_getattr(" << filename << "): Returning attributes for /"
          << endl;
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_nlink = 2;
 
-  } else if (file_exists(
-                 stripped_slash)) { // Eine existierende Datei wird gelesen
+  } else if (file_exists(stripped_slash)) {
     cout << "ramfs_getattr(" << stripped_slash << "): Returning attributes"
          << endl;
     stbuf->st_mode = S_IFREG | 0777;
     stbuf->st_nlink = 1;
     stbuf->st_size = files[stripped_slash].size();
 
-  } else { // Datei nicht vorhanden
+  } else {
     cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
     res = -ENOENT;
   }
@@ -83,32 +79,26 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
   return res;
 }
 
-/** Liest den Inhalt eines Verzeichnisses aus */
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
 
-  // Dateisystem kennt keine Unterverzeichnisse
   if (strcmp(path, "/") != 0) {
     cout << "ramfs_readdir(" << path << "): Only / allowed" << endl;
     return -ENOENT;
   }
 
-  // Diese Dateien m�ssen immer existieren
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
 
-  // F�ge alle Dateien hinzu
   for (FileMap::iterator it = files.begin(); it != files.end(); it++)
     filler(buf, it->first.c_str(), NULL, 0);
 
   return 0;
 }
 
-/** "�ffnet" eine Datei */
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
 
-  // Datei nicht vorhanden
   if (!file_exists(filename)) {
     cout << "ramfs_readdir(" << filename << "): Not found" << endl;
     return -ENOENT;
@@ -117,22 +107,18 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
-/* Liest (Teile einer) Datei */
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
 
-  // Datei nicht vorhanden
   if (!file_exists(filename)) {
     cout << "ramfs_read(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
 
-  // Datei existiert. Lese in Puffer
   FileContents &file = files[filename];
   size_t len = file.size();
 
-  // Pr�fe, wieviele Bytes ab welchem Offset gelesen werden k�nnen
   if (offset < len) {
     if (offset + size > len) {
       cout << "ramfs_read(" << filename << "): offset(" << offset << ") + size("
@@ -147,25 +133,22 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     for (size_t i = 0; i < size; ++i)
       buf[i] = file[offset + i];
 
-  } else { // Offset war groesser als die max. Groesse der Datei
+  } else {
     return -EINVAL;
   }
 
   return size;
 }
 
-/** Schreibt Daten in eine (offene) Datei */
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
-  // Datei nicht vorhanden
   if (!file_exists(filename)) {
     cout << "ramfs_write(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
 
-  // Datei existiert. Schreibe in Puffer
   cout << "ramfs_write(" << filename << "): Writing " << size
        << " bytes startting with offset " << offset << endl;
   FileContents &file = files[filename];
@@ -176,23 +159,19 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
   return size;
 }
 
-/** L�scht eine Datei */
 int ramfs_unlink(const char *pathname) {
   files.erase(strip_leading_slash(pathname));
   return 0;
 }
 
-/** Erzeugt ein neues Dateisystemelement */
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
-  // Datei bereits vorhanden
   if (file_exists(filename)) {
     cout << "ramfs_create(" << filename << "): Already exists" << endl;
     return -EEXIST;
   }
 
-  // Es wird versucht, etwas anderes als eine normale Datei anzulegen
   if ((mode & S_IFREG) == 0) {
     cout << "ramfs_create(" << filename << "): Only files may be created"
          << endl;
@@ -223,7 +202,6 @@ int ramfs_access(const char *path, int) {
 int ramfs_truncate(const char *path, off_t length) {
   string filename = strip_leading_slash(path);
 
-  // Datei nicht vorhanden
   if (!file_exists(filename)) {
     cout << "ramfs_truncate(" << filename << "): Not found" << endl;
     return -ENOENT;
