@@ -1,1 +1,3 @@
 Dockerfile
+*.o
+fusegx

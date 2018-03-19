@@ -1,5 +1,5 @@
 TARGET = fusegx
-CC = clang++-3.8
+CC = clang++
 CFLAGS = -Wextra -Wall -pedantic -c
 CFLAGS += $(shell pkg-config fuse --cflags)
 INCLUDE = $(shell pkg-config fuse --libs)
