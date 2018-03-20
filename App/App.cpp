@@ -48,6 +48,10 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
+void ocall_print(const char* str) {
+  printf("%s\n", str);
+}
+
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
   string filename = path;
   string stripped_slash = strip_leading_slash(filename);
