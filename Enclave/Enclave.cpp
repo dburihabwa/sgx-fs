@@ -96,11 +96,9 @@ int ramfs_list_entries(char** entries) {
   if (entries != NULL) {
     free(entries);
   }
-  int number_of_entries = files.size() + 2;
+  int number_of_entries = files.size();
   entries = (char**) malloc(sizeof(char*) * number_of_entries);
-  entries[0] = ".";
-  entries[1] = "..";
-  size_t i = 2;
+  size_t i = 0;
   for (FileMap::iterator it = files.begin(); it != files.end() && i < number_of_entries; it++, i++) {
     string name = it->first;
     entries[i] = new char[name.length() + 1];
