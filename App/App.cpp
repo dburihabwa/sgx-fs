@@ -2,20 +2,19 @@
  * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
  * https://github.com/pfisterer/fuse-ramfs
  */
+#include <cassert>
 #include <iostream>
 #include <map>
 #include <string>
 using namespace std;
 
+#include "Enclave_u.h"
+#include "sgx_urts.h"
+#include "sgx_utils/sgx_utils.h"
+
 typedef map<int, unsigned char> FileContents;
 typedef map<string, FileContents> FileMap;
 static FileMap files;
-
-static bool file_exists(string filename) {
-  bool b = files.find(filename) != files.end();
-  cout << "file_exists: " << filename << ": " << b << endl;
-  return b;
-}
 
 FileContents to_map(string data) {
   FileContents data_map;
@@ -36,6 +35,8 @@ static string strip_leading_slash(string filename) {
 
   return starts_with_slash ? filename.substr(1, string::npos) : filename;
 }
+
+sgx_enclave_id_t ENCLAVE_ID;
 
 extern "C" {
 
@@ -68,16 +69,20 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_nlink = 2;
 
-  } else if (file_exists(stripped_slash)) {
-    cout << "ramfs_getattr(" << stripped_slash << "): Returning attributes"
-         << endl;
-    stbuf->st_mode = S_IFREG | 0777;
-    stbuf->st_nlink = 1;
-    stbuf->st_size = files[stripped_slash].size();
-
   } else {
-    cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
-    res = -ENOENT;
+    int found;
+    sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, stripped_slash.c_str());
+    if (found) {
+      cout << "ramfs_getattr(" << stripped_slash << "): Returning attributes"
+         << endl;
+      stbuf->st_mode = S_IFREG | 0777;
+      stbuf->st_nlink = 1;
+      stbuf->st_size = files[stripped_slash].size();
+
+    } else {
+      cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
+      res = -ENOENT;
+    }
   }
 
   return res;
@@ -93,17 +98,31 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
+  
+  char **entries;
+  int size;
+  sgx_status_t retval = ramfs_list_entries(ENCLAVE_ID, &size, entries);
 
-  for (FileMap::iterator it = files.begin(); it != files.end(); it++)
-    filler(buf, it->first.c_str(), NULL, 0);
+  for (int i = 0; i < size; i++) {
+    filler(buf, entries[i], NULL, 0);
+  }
+  if (entries != NULL) {
+    for (int i = 0; i < size; i++) {
+      if (entries[i] != NULL) {
+        free(entries[i]);
+      }
+    }
+  }
 
   return 0;
 }
 
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
-  string filename = strip_leading_slash(path);
-
-  if (!file_exists(filename)) {
+  string filename = strip_leading_slash(path);  
+  int found;
+  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  
+  if (!found) {
     cout << "ramfs_readdir(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
@@ -115,7 +134,10 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
 
-  if (!file_exists(filename)) {
+  int found;
+  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  
+  if (found) {
     cout << "ramfs_read(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
@@ -148,7 +170,9 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
-  if (!file_exists(filename)) {
+  int found;
+  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found) {
     cout << "ramfs_write(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
@@ -164,14 +188,17 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 }
 
 int ramfs_unlink(const char *pathname) {
-  files.erase(strip_leading_slash(pathname));
-  return 0;
+  int retval;
+  sgx_status_t status = ramfs_delete_file(ENCLAVE_ID, &retval, pathname);
+  return retval;
 }
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
-  if (file_exists(filename)) {
+  int found;
+  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found) {
     cout << "ramfs_create(" << filename << "): Already exists" << endl;
     return -EEXIST;
   }
@@ -181,9 +208,9 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
          << endl;
     return -EINVAL;
   }
-
-  cout << "ramfs_create(" << filename << "): Creating empty file" << endl;
-  files[filename] = to_map("");
+  int retval;
+  sgx_status_t stattus = ramfs_create_file(ENCLAVE_ID, &retval, path);
+  assert(retval == 0);
   return 0;
 }
 
@@ -206,7 +233,9 @@ int ramfs_access(const char *path, int) {
 int ramfs_truncate(const char *path, off_t length) {
   string filename = strip_leading_slash(path);
 
-  if (!file_exists(filename)) {
+  int found;
+  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found) {
     cout << "ramfs_truncate(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
@@ -281,6 +310,10 @@ int ramfs_setxattr(const char *, const char *, const char *, size_t, int) {
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
+  if (initialize_enclave(&ENCLAVE_ID, "enclave.token", "enclave.signed.so") < 0) {
+    std::cout << "Fail to initialize enclave." << std::endl;
+    return 1;
+  }
   ramfs_oper.getattr = ramfs_getattr;
   ramfs_oper.readdir = ramfs_readdir;
   ramfs_oper.open = ramfs_open;
