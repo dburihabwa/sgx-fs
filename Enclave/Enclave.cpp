@@ -69,6 +69,13 @@ int ramfs_put(const char *filename,
   return size;
 }
 
+int ramfs_get_size(const char *pathname) {
+  if (!ramfs_file_exists(pathname)) {
+    return -1;
+  }
+  return files[strip_leading_slash(pathname)].size();
+}
+
 int ramfs_trunkate(const char* path, size_t length) {
   if (!ramfs_file_exists(path)) {
     return -ENOENT;

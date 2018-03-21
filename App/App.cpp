@@ -2,29 +2,13 @@
  * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
  * https://github.com/pfisterer/fuse-ramfs
  */
-#include <cassert>
 #include <iostream>
-#include <map>
 #include <string>
 using namespace std;
 
 #include "Enclave_u.h"
 #include "sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
-
-typedef map<int, unsigned char> FileContents;
-typedef map<string, FileContents> FileMap;
-static FileMap files;
-
-FileContents to_map(string data) {
-  FileContents data_map;
-  int i = 0;
-
-  for (string::iterator it = data.begin(); it < data.end(); ++it)
-    data_map[i++] = *it;
-
-  return data_map;
-}
 
 static string strip_leading_slash(string filename) {
   bool starts_with_slash = false;
@@ -77,7 +61,9 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
          << endl;
       stbuf->st_mode = S_IFREG | 0777;
       stbuf->st_nlink = 1;
-      stbuf->st_size = files[stripped_slash].size();
+      int file_size;
+      sgx_status_t status = ramfs_get_size(ENCLAVE_ID, &file_size, path);
+      stbuf->st_size = file_size;
 
     } else {
       cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
@@ -137,33 +123,14 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
   int found;
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
   
-  if (found) {
+  if (!found) {
     cout << "ramfs_read(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
-
-  FileContents &file = files[filename];
-  size_t len = file.size();
-
-  if (offset < len) {
-    if (offset + size > len) {
-      cout << "ramfs_read(" << filename << "): offset(" << offset << ") + size("
-           << size << ") > len(" << len << "), setting to " << len - offset
-           << endl;
-
-      size = len - offset;
-    }
-
-    cout << "ramfs_read(" << filename << "): Reading " << size << " bytes"
-         << endl;
-    for (size_t i = 0; i < size; ++i)
-      buf[i] = file[offset + i];
-
-  } else {
-    return -EINVAL;
-  }
-
-  return size;
+  
+  int read;
+  status = ramfs_get(ENCLAVE_ID, &read, path, offset, size, buf);
+  return read;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
@@ -172,19 +139,13 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 
   int found;
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
-  if (found) {
+  if (!found) {
     cout << "ramfs_write(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
-
-  cout << "ramfs_write(" << filename << "): Writing " << size
-       << " bytes startting with offset " << offset << endl;
-  FileContents &file = files[filename];
-
-  for (size_t i = 0; i < size; ++i)
-    file[offset + i] = data[i];
-
-  return size;
+  int written;
+  status = ramfs_put(ENCLAVE_ID, &written, path, offset, size, data);
+  return written;
 }
 
 int ramfs_unlink(const char *pathname) {
@@ -210,7 +171,6 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
   }
   int retval;
   sgx_status_t stattus = ramfs_create_file(ENCLAVE_ID, &retval, path);
-  assert(retval == 0);
   return 0;
 }
 
@@ -235,27 +195,14 @@ int ramfs_truncate(const char *path, off_t length) {
 
   int found;
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
-  if (found) {
+  if (!found) {
     cout << "ramfs_truncate(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
 
-  FileContents &file = files[filename];
-
-  if (file.size() > length) {
-    cout << "ramfs_truncate(" << filename << "): Truncating current size ("
-         << file.size() << ") to (" << length << ")" << endl;
-    file.erase(file.find(length), file.end());
-
-  } else if (file.size() < length) {
-    cout << "ramfs_truncate(" << filename << "): Enlarging current size ("
-         << file.size() << ") to (" << length << ")" << endl;
-
-    for (int i = file.size(); i < length; ++i)
-      file[i] = '\0';
-  }
-
-  return -EINVAL;
+  int retval;
+  sgx_status_t stattus = ramfs_trunkate(ENCLAVE_ID, &retval, path, length);
+  return retval;
 }
 
 int ramfs_mknod(const char *path, mode_t mode, dev_t dev) {

@@ -7,6 +7,7 @@ enclave {
         public int ramfs_file_exists([in, string] const char* filename);
         public int ramfs_get([in, string] const char* filename, unsigned offset, unsigned size, [out] char* data);
         public int ramfs_put([in, string] const char* filename, size_t offset, size_t size, [in, string] const char* data);
+        public int ramfs_get_size([in, string] const char *pathname);
         public int ramfs_trunkate([in, string] const char* filename, size_t size);
         public int ramfs_list_entries([out] char** filenames);
         public int ramfs_create_file([in, string] const char *pathname);
