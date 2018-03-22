@@ -62,7 +62,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
       stbuf->st_mode = S_IFREG | 0777;
       stbuf->st_nlink = 1;
       int file_size;
-      sgx_status_t status = ramfs_get_size(ENCLAVE_ID, &file_size, path);
+      sgx_status_t status = ramfs_get_size(ENCLAVE_ID, &file_size, stripped_slash.c_str());
       stbuf->st_size = file_size;
 
     } else {
@@ -113,7 +113,7 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
   
   if (!found) {
-    cout << "ramfs_readdir(" << filename << "): Not found" << endl;
+    cout << "ramfs_open(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
 
@@ -133,7 +133,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
   }
   
   int read;
-  status = ramfs_get(ENCLAVE_ID, &read, path, offset, size, buf);
+  status = ramfs_get(ENCLAVE_ID, &read, filename.c_str(), offset, size, buf);
   return read;
 }
 
@@ -148,17 +148,19 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     return -ENOENT;
   }
   int written;
-  status = ramfs_put(ENCLAVE_ID, &written, path, offset, size, data);
+  status = ramfs_put(ENCLAVE_ID, &written, filename.c_str(), offset, size, data);
   return written;
 }
 
 int ramfs_unlink(const char *pathname) {
+  string filename = strip_leading_slash(pathname);
   int retval;
-  sgx_status_t status = ramfs_delete_file(ENCLAVE_ID, &retval, pathname);
+  sgx_status_t status = ramfs_delete_file(ENCLAVE_ID, &retval, filename.c_str());
   return retval;
 }
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
+  cout << "[ramfs_create] entering" << endl;
   string filename = strip_leading_slash(path);
 
   int found;
@@ -174,8 +176,9 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     return -EINVAL;
   }
   int retval;
-  sgx_status_t stattus = ramfs_create_file(ENCLAVE_ID, &retval, path);
-  return 0;
+  sgx_status_t stattus = ramfs_create_file(ENCLAVE_ID, &retval, filename.c_str());
+  cout << "[ramfs_create] exiting" << endl;
+  return retval;
 }
 
 int ramfs_fgetattr(const char *path, struct stat *stbuf,
@@ -205,7 +208,7 @@ int ramfs_truncate(const char *path, off_t length) {
   }
 
   int retval;
-  sgx_status_t stattus = ramfs_trunkate(ENCLAVE_ID, &retval, path, length);
+  sgx_status_t stattus = ramfs_trunkate(ENCLAVE_ID, &retval,  filename.c_str(), length);
   return retval;
 }
 
