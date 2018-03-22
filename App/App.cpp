@@ -76,30 +76,34 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
 
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
-
+  cout << "[entering] ramfs_readdir" << endl;
   if (strcmp(path, "/") != 0) {
     cout << "ramfs_readdir(" << path << "): Only / allowed" << endl;
     return -ENOENT;
   }
-
+  cout << "[ramfs_readdir] adding basic entries" << endl;
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
+  cout << "[ramfs_readdir] added basic entries" << endl;
   
-  char **entries;
+  int number_of_entries;
+  sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
+  char **entries = new char*[number_of_entries];
   int size;
-  sgx_status_t retval = ramfs_list_entries(ENCLAVE_ID, &size, entries);
+  cout << "[ramfs_readdir] sgx in" << endl;
+  status = ramfs_list_entries(ENCLAVE_ID, &size, entries);
+  cout << "[ramfs_readdir] sgx out with " << size << " entries of size " << sizeof(entries[0]) << endl;
 
   for (int i = 0; i < size; i++) {
+    cout << "[ramfs_readdir] adding " << entries[i] << " to the list" << endl;
     filler(buf, entries[i], NULL, 0);
+    cout << "[ramfs_readdir] added  " << entries[i] << " to the list" << endl;
   }
+  cout << "[ramfs_readdir] freeing out data structures" << endl;
   if (entries != NULL) {
-    for (int i = 0; i < size; i++) {
-      if (entries[i] != NULL) {
-        free(entries[i]);
-      }
-    }
+    delete(entries);
   }
-
+  cout << "[exiting] ramfs_readdir" << endl;
   return 0;
 }
 

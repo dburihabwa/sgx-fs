@@ -92,12 +92,12 @@ int ramfs_trunkate(const char* path, size_t length) {
   return 0;
 }
 
+int ramfs_get_number_of_entries() {
+  return files.size();
+}
+
 int ramfs_list_entries(char** entries) {
-  if (entries != NULL) {
-    free(entries);
-  }
-  int number_of_entries = files.size();
-  entries = (char**) malloc(sizeof(char*) * number_of_entries);
+  int number_of_entries = ramfs_get_number_of_entries();
   size_t i = 0;
   for (FileMap::iterator it = files.begin(); it != files.end() && i < number_of_entries; it++, i++) {
     string name = it->first;
