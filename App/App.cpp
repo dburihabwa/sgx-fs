@@ -57,8 +57,6 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
     int found;
     sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, stripped_slash.c_str());
     if (found) {
-      cout << "ramfs_getattr(" << stripped_slash << "): Returning attributes"
-         << endl;
       stbuf->st_mode = S_IFREG | 0777;
       stbuf->st_nlink = 1;
       int file_size;
@@ -66,11 +64,9 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
       stbuf->st_size = file_size;
 
     } else {
-      cout << "ramfs_getattr(" << stripped_slash << "): not found" << endl;
       res = -ENOENT;
     }
   }
-
   return res;
 }
 
@@ -122,33 +118,47 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
 
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
+  cout << "[ramfs_read] Entering" << endl;
   string filename = strip_leading_slash(path);
 
   int found;
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
   
   if (!found) {
-    cout << "ramfs_read(" << filename << "): Not found" << endl;
+    cout << "[ramfs_read] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
   
   int read;
-  status = ramfs_get(ENCLAVE_ID, &read, filename.c_str(), offset, size, buf);
+  status = ramfs_get(ENCLAVE_ID, &read, filename.c_str(), (long) offset, size, buf);
+  cout << "[ramfs_read] Read " << read << " bytes of data" << '\n';
+  cout << "[ramfs_read] Exiting" << endl;
+  for (size_t i = 0; i < (size_t) read; i++) {
+    if (buf[i] != 0) {
+      cout << "[ramfs_read] buf[" << i << "] = " << buf[i] << endl;
+    }
+  }
   return read;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
+  cout << "[ramfs_write] Entering" << endl;
   string filename = strip_leading_slash(path);
 
   int found;
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
   if (!found) {
-    cout << "ramfs_write(" << filename << "): Not found" << endl;
+    cout << "[ramfs_write] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
+  for (size_t i = 0; i < size; i++) {
+    cout << "[ramfs_write] buf[" << i << "] = " << data[i] << endl;
+  }
   int written;
-  status = ramfs_put(ENCLAVE_ID, &written, filename.c_str(), offset, size, data);
+  status = ramfs_put(ENCLAVE_ID, &written, filename.c_str(), (long) offset, size, data);
+  cout << "[ramfs_write] Wrote " << written << " bytes of data" << '\n';
+  cout << "[ramfs_write] Exiting" << endl;
   return written;
 }
 

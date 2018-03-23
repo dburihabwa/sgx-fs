@@ -1,4 +1,5 @@
 #include <cerrno>
+#include <cstring>
 #include <map>
 #include <string>
 
@@ -7,8 +8,8 @@
 using namespace std;
 
 
-typedef std::map<int, unsigned char> FileContents;
-typedef std::map<string, FileContents> FileMap;
+typedef map<int, char> FileContents;
+typedef map<string, FileContents> FileMap;
 static FileMap files;
 
 static string strip_leading_slash(string filename) {
@@ -31,33 +32,48 @@ static FileContents to_map(string data) {
   return data_map;
 }
 
+static char* to_array(FileContents content) {
+  char* data = new char[content.size()];
+  for (map<int, char>::iterator it = content.begin(); it != content.end(); it++) {
+    data[it->first] = it->second;
+  }
+  return data;
+}
+
 int ramfs_file_exists(const char* filename) {
   string name(filename);
   return files.find(filename) != files.end() ? 1 : 0;
 }
 
 int ramfs_get(const char* filename,
-              unsigned offset,
-              unsigned size,
+              long offset,
+              size_t size,
               char* buffer) {
+  ocall_print("[ramfs_get] Entering");
   FileContents &file = files[filename];
+
   size_t len = file.size();
   if (offset < len) {
     if (offset + size > len) {
       size = len - offset;
     }
-    for (size_t i = 0; i < size; ++i) {
-      buffer[i] = file[offset + i];
-    }
+    char* intermediary = to_array(file);
+    memcpy(buffer, intermediary + offset, size);
+    delete [] intermediary;
+    ocall_print("[ramfs_get] Exiting");
     return size;
   }
   return -EINVAL;
 }
 
 int ramfs_put(const char *filename,
-              size_t offset,
+              long offset,
               size_t size,
               const char *data) {
+  ocall_print("[ramfs_put] entering");
+  char log_message[256];
+  log_message[0] = '\0';
+  ocall_print(data);
   string path = strip_leading_slash(filename);
   if (!ramfs_file_exists(path.c_str())) {
     return -ENOENT;
@@ -65,7 +81,11 @@ int ramfs_put(const char *filename,
   FileContents &file = files[filename];
   for (size_t i = 0; i < size; ++i) {
     file[offset + i] = data[i];
+    char copied[1];
+    copied[0] = file[offset + i];
+    ocall_print(copied);
   }
+  ocall_print("[ramfs_put] exiting");
   return size;
 }
 
