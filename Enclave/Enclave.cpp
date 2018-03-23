@@ -2,15 +2,14 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "Enclave_t.h"
 
 using namespace std;
 
 
-typedef map<int, char> FileContents;
-typedef map<string, FileContents> FileMap;
-static FileMap files;
+static map<string, vector<char> > files;
 
 static string strip_leading_slash(string filename) {
   bool starts_with_slash = false;
@@ -20,24 +19,6 @@ static string strip_leading_slash(string filename) {
   }
 
   return starts_with_slash ? filename.substr(1, string::npos) : filename;
-}
-
-static FileContents to_map(string data) {
-  FileContents data_map;
-  int i = 0;
-
-  for (string::iterator it = data.begin(); it < data.end(); ++it)
-    data_map[i++] = *it;
-
-  return data_map;
-}
-
-static char* to_array(FileContents content) {
-  char* data = new char[content.size()];
-  for (map<int, char>::iterator it = content.begin(); it != content.end(); it++) {
-    data[it->first] = it->second;
-  }
-  return data;
 }
 
 int ramfs_file_exists(const char* filename) {
@@ -50,16 +31,16 @@ int ramfs_get(const char* filename,
               size_t size,
               char* buffer) {
   ocall_print("[ramfs_get] Entering");
-  FileContents &file = files[filename];
+  vector<char> &file = files[filename];
 
   size_t len = file.size();
   if (offset < len) {
     if (offset + size > len) {
       size = len - offset;
     }
-    char* intermediary = to_array(file);
-    memcpy(buffer, intermediary + offset, size);
-    delete [] intermediary;
+    for (size_t i = 0; i < size; i++) {
+      buffer[i] = file[offset + i];
+    }
     ocall_print("[ramfs_get] Exiting");
     return size;
   }
@@ -71,19 +52,19 @@ int ramfs_put(const char *filename,
               size_t size,
               const char *data) {
   ocall_print("[ramfs_put] entering");
-  char log_message[256];
-  log_message[0] = '\0';
-  ocall_print(data);
   string path = strip_leading_slash(filename);
   if (!ramfs_file_exists(path.c_str())) {
     return -ENOENT;
   }
-  FileContents &file = files[filename];
-  for (size_t i = 0; i < size; ++i) {
+  ocall_print("[ramfs_put] About to copy data!");
+  vector<char> &file = files[filename];
+  //Check if the byte vector needs to be resized before writing to it
+  if (file.capacity() < (offset + size)) {
+    size_t size_difference = (offset + size) - file.capacity();
+    file.resize(size_difference);
+  }
+  for (size_t i = 0; i < size; i++) {
     file[offset + i] = data[i];
-    char copied[1];
-    copied[0] = file[offset + i];
-    ocall_print(copied);
   }
   ocall_print("[ramfs_put] exiting");
   return size;
@@ -101,14 +82,8 @@ int ramfs_trunkate(const char* path, size_t length) {
     return -ENOENT;
   }
   string filename = strip_leading_slash(path);
-  FileContents &file = files[filename];
-  if (file.size() >= length) {
-    file.erase(file.find(length), file.end());
-    return 0;
-  }
-  for (size_t i = file.size(); i < length; ++i) {
-    file[i] = '\0';
-  }
+  vector<char> &file = files[filename];
+  file.resize(length);
   return 0;
 }
 
@@ -119,7 +94,7 @@ int ramfs_get_number_of_entries() {
 int ramfs_list_entries(char** entries) {
   int number_of_entries = ramfs_get_number_of_entries();
   size_t i = 0;
-  for (FileMap::iterator it = files.begin(); it != files.end() && i < number_of_entries; it++, i++) {
+  for (map<string, vector<char> >::iterator it = files.begin(); it != files.end() && i < number_of_entries; it++, i++) {
     string name = it->first;
     entries[i] = new char[name.length() + 1];
     name.copy(entries[i], sizeof(entries[i]));
@@ -130,7 +105,7 @@ int ramfs_list_entries(char** entries) {
 
 int ramfs_create_file(const char *path) {
   string filename = strip_leading_slash(path);
-  files[filename] = to_map("");
+  files[filename] = vector<char>();
   return 0;
 }
 
