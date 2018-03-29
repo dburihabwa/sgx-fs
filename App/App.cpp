@@ -260,7 +260,7 @@ int ramfs_utime(const char *, struct utimbuf *) {
 }
 int ramfs_utimens(const char *, const struct timespec tv[2]) {
   cout << "ramfs_utimens not implemented" << endl;
-  return -EINVAL;
+  return 0;
 }
 int ramfs_bmap(const char *, size_t blocksize, uint64_t *idx) {
   cout << "ramfs_bmap not implemented" << endl;
