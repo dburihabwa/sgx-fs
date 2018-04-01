@@ -34,7 +34,7 @@ extern "C" {
 #include <unistd.h>
 
 void ocall_print(const char* str) {
-  printf("%s\n", str);
+  printf("[ocall_print] %s\n", str);
 }
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
@@ -83,17 +83,24 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   cout << "[ramfs_readdir] added basic entries" << endl;
   
   int number_of_entries;
+  cout << "[ramfs_readdir] sgx in" << endl;
   sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
-  char **entries = new char*[number_of_entries];
+  cout << "[ramfs_readdir] sgx out expecting " << number_of_entries << " entries" << endl;
+  const size_t step = 256;
+  const size_t buffer_length = number_of_entries * step;
+  char *entries = new char[buffer_length];
+  cout << "Initializing buffer of length " << buffer_length << endl;
   int size;
   cout << "[ramfs_readdir] sgx in" << endl;
-  status = ramfs_list_entries(ENCLAVE_ID, &size, entries);
+  status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
   cout << "[ramfs_readdir] sgx out with " << size << " entries of size " << sizeof(entries[0]) << endl;
+  cout << "[ramfs_readdir] sgx out with " << entries << endl;
 
-  for (int i = 0; i < size; i++) {
-    cout << "[ramfs_readdir] adding " << entries[i] << " to the list" << endl;
-    filler(buf, entries[i], NULL, 0);
-    cout << "[ramfs_readdir] added  " << entries[i] << " to the list" << endl;
+  for (int i = 0; i < buffer_length; i += step) {
+    char* entry = entries + (i * sizeof(char)); 
+    cout << "[ramfs_readdir] adding " << entry << " to the list (length = " << strlen(entry) << ")" << endl;
+    filler(buf, entry, NULL, 0);
+    cout << "[ramfs_readdir] added  " << entry << " to the list" << endl;
   }
   cout << "[ramfs_readdir] freeing out data structures" << endl;
   if (entries != NULL) {

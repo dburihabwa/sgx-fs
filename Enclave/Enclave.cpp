@@ -12,13 +12,10 @@ using namespace std;
 static map<string, vector<char> > files;
 
 static string strip_leading_slash(string filename) {
-  bool starts_with_slash = false;
-
   if (filename.size() > 0 && filename[0] == '/') {
-      starts_with_slash = true;
+    return filename.substr(1, string::npos);
   }
-
-  return starts_with_slash ? filename.substr(1, string::npos) : filename;
+  return filename;
 }
 
 int ramfs_file_exists(const char* filename) {
@@ -91,14 +88,16 @@ int ramfs_get_number_of_entries() {
   return files.size();
 }
 
-int ramfs_list_entries(char** entries) {
-  int number_of_entries = ramfs_get_number_of_entries();
+int ramfs_list_entries(char*entries, size_t length) {
   size_t i = 0;
-  for (map<string, vector<char> >::iterator it = files.begin(); it != files.end() && i < number_of_entries; it++, i++) {
+  const size_t offset = 256;
+  size_t number_of_entries = 0;
+  for (auto it = files.begin(); it != files.end() && i < length; it++, i += offset, number_of_entries++) {
     string name = it->first;
-    entries[i] = new char[name.length() + 1];
-    name.copy(entries[i], sizeof(entries[i]));
-    entries[i][name.length()] = '\0';
+    //memcpy seems to do the trick bug str::cpy fails miserably here
+    memcpy(entries + i, name.c_str(), name.length());
+    entries[i + name.length()] = '\0';
+    ocall_print(entries);
   }
   return number_of_entries;
 }
