@@ -27,7 +27,6 @@ int ramfs_get(const char* filename,
               long offset,
               size_t size,
               char* buffer) {
-  ocall_print("[ramfs_get] Entering");
   vector<char> &file = files[filename];
 
   size_t len = file.size();
@@ -38,7 +37,6 @@ int ramfs_get(const char* filename,
     for (size_t i = 0; i < size; i++) {
       buffer[i] = file[offset + i];
     }
-    ocall_print("[ramfs_get] Exiting");
     return size;
   }
   return -EINVAL;
@@ -48,12 +46,10 @@ int ramfs_put(const char *filename,
               long offset,
               size_t size,
               const char *data) {
-  ocall_print("[ramfs_put] entering");
   string path = strip_leading_slash(filename);
   if (!ramfs_file_exists(path.c_str())) {
     return -ENOENT;
   }
-  ocall_print("[ramfs_put] About to copy data!");
   vector<char> &file = files[filename];
   //Check if the byte vector needs to be resized before writing to it
   if (file.capacity() < (offset + size)) {
@@ -63,7 +59,6 @@ int ramfs_put(const char *filename,
   for (size_t i = 0; i < size; i++) {
     file[offset + i] = data[i];
   }
-  ocall_print("[ramfs_put] exiting");
   return size;
 }
 
@@ -97,7 +92,6 @@ int ramfs_list_entries(char*entries, size_t length) {
     //memcpy seems to do the trick bug str::cpy fails miserably here
     memcpy(entries + i, name.c_str(), name.length());
     entries[i + name.length()] = '\0';
-    ocall_print(entries);
   }
   return number_of_entries;
 }
@@ -115,7 +109,6 @@ int ramfs_delete_file(const char *pathname) {
 
 int generate_random_number() {
   static int number = 42;
-  ocall_print("Processing random number generation...");
   if ((number % 2) == 0) {
     number /= 2;
   } else {
