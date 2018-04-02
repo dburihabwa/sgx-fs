@@ -52,9 +52,9 @@ int ramfs_put(const char *filename,
   }
   vector<char> &file = files[filename];
   //Check if the byte vector needs to be resized before writing to it
-  if (file.capacity() < (offset + size)) {
-    size_t size_difference = (offset + size) - file.capacity();
-    file.resize(size_difference);
+  size_t min_size_required = offset + size;
+  if (file.capacity() < min_size_required) {
+    file.reserve(min_size_required);
   }
   for (size_t i = 0; i < size; i++) {
     file[offset + i] = data[i];
