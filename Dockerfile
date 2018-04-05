@@ -8,8 +8,12 @@ RUN apt-get update &&\
     git checkout sgx_2.1.2 &&\
     ./download_prebuilt.sh &&\
     make sdk_install_pkg &&\
+    make psw_install_pkg &&\
     cd linux/installer/bin &&\
-    echo "yes" | ./sgx_linux_x64_sdk_2.1.102.43402.bin
+    echo "yes" | ./sgx_linux_x64_sdk_2.1.102.43402.bin &&\
+    ./sgx_linux_x64_psw_2.1.102.43402.bin &&\
+    source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment  &&\
+    echo -e "\n##### Intel SGX SDK\nsource /opt/linux-sgx/linux/installer/bin/sgxsdk/environment\n" >> ~/.bashrc
 COPY . /opt/sfusegx/
 WORKDIR /opt/sfusegx
-RUN bash -c "source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment && make"
+RUN make SGX_MODE=HW SGX_PRERELEASE=1

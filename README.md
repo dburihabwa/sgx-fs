@@ -13,6 +13,7 @@ On other systems make sure that the following tools and libraries are installed.
 
 * Intel SGX Driver
 * Intel SGX SDK
+* Intel SGX PSW
 * libfuse 2.9
 * g++
 
