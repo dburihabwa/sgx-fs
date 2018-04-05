@@ -51,13 +51,15 @@ int ramfs_put(const char *filename,
     return -ENOENT;
   }
   vector<char> &file = files[filename];
-  //Check if the byte vector needs to be resized before writing to it
-  size_t min_size_required = offset + size;
-  if (file.capacity() < min_size_required) {
-    file.reserve(min_size_required);
+  size_t i = 0;
+  if (offset < file.size()) {
+    auto room_for = file.size() - offset;
+    for (; i < room_for; i++) {
+      file[offset + i] = data[i];
+    }
   }
-  for (size_t i = 0; i < size; i++) {
-    file[offset + i] = data[i];
+  for (; i < size; i++) {
+     file.push_back(data[i]);
   }
   return size;
 }
