@@ -50,16 +50,16 @@ int ramfs_put(const char *filename,
   if (!ramfs_file_exists(path.c_str())) {
     return -ENOENT;
   }
-  vector<char> &file = files[filename];
+  vector<char> *file = &(files[filename]);
   size_t i = 0;
-  if (offset < file.size()) {
-    auto room_for = file.size() - offset;
+  if (offset < file->size()) {
+    auto room_for = file->size() - offset;
     for (; i < room_for; i++) {
-      file[offset + i] = data[i];
+      (*file)[offset + i] = data[i];
     }
   }
   for (; i < size; i++) {
-     file.push_back(data[i]);
+     file->push_back(data[i]);
   }
   return size;
 }
