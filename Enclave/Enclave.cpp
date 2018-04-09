@@ -108,13 +108,3 @@ int ramfs_delete_file(const char *pathname) {
   files.erase(strip_leading_slash(pathname));
   return 0;
 }
-
-int generate_random_number() {
-  static int number = 42;
-  if ((number % 2) == 0) {
-    number /= 2;
-  } else {
-    number = (number * 3) + 1;
-  }
-  return number;
-}
