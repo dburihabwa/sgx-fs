@@ -1,4 +1,5 @@
 enclave {
+
     from "Sealing/Sealing.edl" import *;
 
     trusted {
@@ -6,6 +7,8 @@ enclave {
         public int ramfs_file_exists([in, string] const char* filename);
         public int ramfs_get([in, string] const char* filename, long offset, size_t size, [out, size=size] char* data);
         public int ramfs_put([in, string] const char* filename, long offset, size_t size, [in, size=size] const char* data);
+        public sgx_status_t ramfs_encrypt([in, string] const char* filename, [in, size=size] const uint8_t* plaintext, size_t size, [out, size=sealed_size] sgx_sealed_data_t* encrypted, size_t sealed_size);
+        public sgx_status_t ramfs_decrypt([in, string] const char* filename, [in, size=sealed_size] sgx_sealed_data_t* encrypted, size_t sealed_size, [out, size=size] uint8_t* plaintext, size_t size);
         public int ramfs_get_size([in, string] const char *pathname);
         public int ramfs_trunkate([in, string] const char* filename, size_t size);
         public int ramfs_get_number_of_entries(void);

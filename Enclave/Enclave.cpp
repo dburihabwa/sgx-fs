@@ -4,6 +4,10 @@
 #include <string>
 #include <vector>
 
+#include "sgx_trts.h"
+#include "sgx_tseal.h"
+
+
 #include "Enclave_t.h"
 
 using namespace std;
@@ -107,4 +111,23 @@ int ramfs_create_file(const char *path) {
 int ramfs_delete_file(const char *pathname) {
   files.erase(strip_leading_slash(pathname));
   return 0;
+}
+
+sgx_status_t ramfs_encrypt(const char* filename,
+                  const uint8_t* plaintext,
+                  size_t size,
+                  sgx_sealed_data_t* encrypted,
+                  size_t sealed_size) {
+  sgx_status_t status = sgx_seal_data(0, NULL, size, plaintext, sealed_size, encrypted);
+  return status;
+}
+
+sgx_status_t ramfs_decrypt(const char* filename,
+                  sgx_sealed_data_t* encrypted,
+                  size_t sealed_size,
+                  uint8_t* plaintext,
+                  size_t size) {
+  uint32_t data_size = size;
+  sgx_status_t status = sgx_unseal_data(encrypted, NULL, NULL, (uint8_t*) plaintext, &data_size);
+  return status;
 }
