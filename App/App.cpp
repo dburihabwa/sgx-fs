@@ -265,6 +265,10 @@ int ramfs_setxattr(const char *, const char *, const char *, size_t, int) {
   return -EINVAL;
 }
 
+void destroy(void* private_data) {
+  sgx_destroy_enclave(ENCLAVE_ID);
+}
+
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
@@ -296,6 +300,7 @@ int main(int argc, char **argv) {
   ramfs_oper.fgetattr = ramfs_fgetattr;
   ramfs_oper.utimens = ramfs_utimens;
   ramfs_oper.bmap = ramfs_bmap;
+  ramfs_oper.destroy = destroy;
 
   return fuse_main(argc, argv, &ramfs_oper, NULL);
 }
