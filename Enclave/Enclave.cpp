@@ -13,7 +13,7 @@
 using namespace std;
 
 
-static map<string, vector<char> > files;
+static map<string, vector<char>> files;
 
 static string strip_leading_slash(string filename) {
   if (filename.size() > 0 && filename[0] == '/') {
@@ -114,7 +114,7 @@ int ramfs_delete_file(const char *pathname) {
 }
 
 sgx_status_t ramfs_encrypt(const char* filename,
-                  const uint8_t* plaintext,
+                  uint8_t* plaintext,
                   size_t size,
                   sgx_sealed_data_t* encrypted,
                   size_t sealed_size) {
