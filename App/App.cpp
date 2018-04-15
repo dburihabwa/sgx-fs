@@ -2,6 +2,7 @@
  * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
  * https://github.com/pfisterer/fuse-ramfs
  */
+#include <cassert>
 #include <cmath>
 #include <iostream>
 #include <map>
@@ -14,8 +15,9 @@ using namespace std;
 #include "sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
 
+static const size_t BLOCK_SIZE = 4096;
 
-static map<string, vector<sgx_sealed_data_t>> FILES;
+static map<string, vector<sgx_sealed_data_t*>> FILES;
 
 static string strip_leading_slash(string filename) {
   bool starts_with_slash = false;
@@ -28,6 +30,29 @@ static string strip_leading_slash(string filename) {
 }
 
 sgx_enclave_id_t ENCLAVE_ID;
+
+
+static void print_buffer(const uint8_t* buffer, size_t payload_size) {
+  printf("[ ");
+  for (size_t i = 0; i < payload_size; i++) {
+    printf("%02x ", buffer[i]);
+  }
+  printf("]\n");
+}
+
+static void print_sealed_data(sgx_sealed_data_t* block) {
+  printf("(%p) = ", block);
+  cout << "{" << endl;
+  cout << "\taes_data.payload_size: " << block->aes_data.payload_size << endl;
+  cout << "\taes_data.payload_tag";
+  printf("(%p): ", block->aes_data.payload_tag);
+  print_buffer(block->aes_data.payload_tag, SGX_SEAL_TAG_SIZE);
+  cout << "\taes_data.payload";
+  printf("(%p): ", block->aes_data.payload);
+  print_buffer(block->aes_data.payload, block->aes_data.payload_size);
+  cout << "}" << endl;
+}
+
 
 extern "C" {
 
@@ -42,13 +67,6 @@ extern "C" {
 
 void ocall_print(const char* str) {
   printf("[ocall_print] %s\n", str);
-}
-
-static sgx_sealed_data_t* copy_block(const sgx_sealed_data_t* block) {
-  sgx_sealed_data_t* copy = (sgx_sealed_data_t*) malloc(sizeof(sgx_sealed_data_t));
-  //copy->aes_data.payload = new uint8_t[block->aes_data.payload_size];
-  memcpy(copy->aes_data.payload, block->aes_data.payload, block->aes_data.payload_size);
-  return copy;
 }
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
@@ -70,10 +88,12 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
   } else { 
     auto entry = FILES.find(stripped_slash);
     if (entry != FILES.end()) {
-      vector<sgx_sealed_data_t> data = entry->second;
+      vector<sgx_sealed_data_t*> data = entry->second;
       int file_size = 0;
       for (auto it = data.begin(); it != data.end(); it++) {
-        file_size += it->aes_data.payload_size;
+        sgx_sealed_data_t* sealed_block = (sgx_sealed_data_t*) (*it);
+        print_sealed_data(sealed_block);
+        file_size += sealed_block->aes_data.payload_size;
       }
       stbuf->st_size = file_size;
 
@@ -85,22 +105,6 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
     }
   }
   return res;
-}
-
-static void print_buffer(const uint8_t* buffer, size_t payload_size) {
-  printf("[ ");
-  for (auto i = 0; i < payload_size; i++) {
-    printf("%02x ", buffer[i]);
-  }
-  printf("]\n");
-}
-
-static void print_sealed_data(sgx_sealed_data_t* block, size_t payload_size) {
-  printf("(%p) = ", block);
-  cout << "{" << endl << "\taes_data.payload";
-  printf("(%p):", block->aes_data.payload);
-  print_buffer(block->aes_data.payload, payload_size);
-  cout << "}" << endl;
 }
 
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
@@ -129,10 +133,6 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
-static off_t BLOCK_SIZE = 4096;
-
-uint8_t* payload_copy;
-
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
@@ -143,7 +143,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     return -ENOENT;
   }
   auto blocks = entry->second;
-  auto block_index = int(floor(offset / BLOCK_SIZE));
+  auto block_index = size_t(floor(offset / BLOCK_SIZE));
   if (blocks.size() <= block_index) {
     cerr << "[ramfs_read] " << filename << ": offset too large" << endl;
     return -ENOENT;
@@ -153,25 +153,19 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     cerr << "[ramfs_read] " << filename << ": offset + size too large" << endl;
     return -ENOENT;
   }
-  sgx_status_t status;
-  sgx_status_t read;
-  sgx_sealed_data_t block = entry->second[block_index];
+  sgx_sealed_data_t* block = entry->second[block_index];
  
-  auto payload_size = block.aes_data.payload_size;
-  auto sealed_size = sizeof(block) + payload_size;
+  auto payload_size = block->aes_data.payload_size;
+  auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
 
-  print_buffer(payload_copy, payload_size);
-  memcpy(block.aes_data.payload, payload_copy, payload_size);
+  print_sealed_data(block);
 
-  print_sealed_data(&block, payload_size);
-  uint8_t* buffer = new uint8_t[size];
-  cout << payload_size << " -> " << sealed_size << endl;
-  status = ramfs_decrypt(ENCLAVE_ID, &read,
-                        filename.c_str(),
-                        &block, sealed_size,
-                        buffer, payload_size);
-  cout << "[ramfs_read] status = " << status << endl;
-  cout << "[ramfs_read] ret    = " << read << endl;
+
+  sgx_status_t read;
+  ramfs_decrypt(ENCLAVE_ID, &read,
+                filename.c_str(),
+                block, sealed_size,
+                (uint8_t*) buf, payload_size);
   switch (read) {
     case SGX_ERROR_INVALID_PARAMETER:
       cerr << "[ramfs_read] Invalid parameter" << endl;
@@ -194,14 +188,10 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     case SGX_ERROR_UNEXPECTED:
       cerr << "[ramfs_read] Indicates a cryptography library failure." << endl;
       break;
-
-    case SGX_SUCCESS:
     default:
-      cout << "[ramfs_read] Back from decrytping" << endl;
+      break;
   }
-  memcpy(buf, buffer, payload_size);
-  delete buffer;
-  return payload_size;
+  return size;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
@@ -221,7 +211,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
   auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
   auto block = (sgx_sealed_data_t*) malloc(sealed_size);
 
-  for (auto i = 0; i < size; i++) {
+  for (size_t i = 0; i < size; i++) {
     plaintext[offset_in_block + i] = data[i];
   }
   sgx_status_t ret;
@@ -232,13 +222,9 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                                       block, sealed_size);
   cout << "[ramfs_write] status = " << status << endl;
   cout << "[ramfs_write] ret    = " << ret << endl;
-  print_sealed_data(block, payload_size);
-  FILES[filename].push_back(*block);
-  if (payload_copy != NULL) {
-    delete [] payload_copy;
-  }
-  payload_copy = new uint8_t[payload_size];
-  memcpy(payload_copy, block->aes_data.payload, payload_size);
+  cout << "[ramfs_write] wrote " << size << " bytes" << endl;
+  print_sealed_data(block);
+  FILES[filename].push_back(block);
   delete [] plaintext;
   cout << "[ramfs_write] exiting" << endl;
   return size;
@@ -263,7 +249,7 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
          << endl;
     return -EINVAL;
   }
-  FILES[filename] = vector<sgx_sealed_data_t>();
+  FILES[filename] = vector<sgx_sealed_data_t*>();
   cout << "Files in the system:" << endl;
   for (auto it = FILES.begin(); it != FILES.end(); it++) {
     cout << "  * " << it->first << endl;
@@ -314,19 +300,19 @@ int ramfs_truncate(const char *path, off_t length) {
   auto bytes_to_keep = length % BLOCK_SIZE;
 
   uint8_t* plaintext = new uint8_t[bytes_to_keep];
-  sgx_status_t ret;
   cout << "[ramfs_truncate] decrypting data" << endl;
-  sgx_status_t status = ramfs_decrypt(ENCLAVE_ID,
-                                      &ret,
-                                      filename.c_str(),
-                                      &block_to_trim, sizeof(sgx_sealed_data_t) + BLOCK_SIZE,
-                                      plaintext, bytes_to_keep);
+  sgx_status_t ret;
+  ramfs_decrypt(ENCLAVE_ID,
+                &ret,
+                filename.c_str(),
+                block_to_trim, sizeof(sgx_sealed_data_t) + BLOCK_SIZE,
+                plaintext, bytes_to_keep);
   cout << "[ramfs_truncate] encrypting data back" << endl;
-  status = ramfs_encrypt(ENCLAVE_ID,
-                         &ret,
-                         filename.c_str(),
-                         plaintext, bytes_to_keep,
-                         &block_to_trim, sizeof(sgx_sealed_data_t) + bytes_to_keep);
+  ramfs_encrypt(ENCLAVE_ID,
+                &ret,
+                filename.c_str(),
+                plaintext, bytes_to_keep,
+                block_to_trim, sizeof(sgx_sealed_data_t) + bytes_to_keep);
   cout << "[ramfs_truncate] exiting" << endl;
   delete plaintext;
 
