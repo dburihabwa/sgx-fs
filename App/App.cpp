@@ -53,6 +53,15 @@ static void print_sealed_data(sgx_sealed_data_t* block) {
   cout << "}" << endl;
 }
 
+static size_t compute_file_size(vector<sgx_sealed_data_t*> &data) {
+  size_t size = 0;
+  for (auto it = data.begin(); it != data.end(); it++) {
+    sgx_sealed_data_t* sealed_block = (sgx_sealed_data_t*) (*it);
+    size += sealed_block->aes_data.payload_size;
+  }
+  return size;
+}
+
 
 extern "C" {
 
@@ -89,13 +98,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
     auto entry = FILES.find(stripped_slash);
     if (entry != FILES.end()) {
       vector<sgx_sealed_data_t*> data = entry->second;
-      int file_size = 0;
-      for (auto it = data.begin(); it != data.end(); it++) {
-        sgx_sealed_data_t* sealed_block = (sgx_sealed_data_t*) (*it);
-        print_sealed_data(sealed_block);
-        file_size += sealed_block->aes_data.payload_size;
-      }
-      stbuf->st_size = file_size;
+      stbuf->st_size = compute_file_size(data);
 
       stbuf->st_mode = S_IFREG | 0777;
       stbuf->st_nlink = 1;
@@ -158,8 +161,6 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
   auto payload_size = block->aes_data.payload_size;
   auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
 
-  print_sealed_data(block);
-
 
   sgx_status_t read;
   ramfs_decrypt(ENCLAVE_ID, &read,
@@ -196,18 +197,45 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
-  cout << "[ramfs_write] entering" << endl;
   string filename = strip_leading_slash(path);
   auto entry = FILES.find(filename);
   if (entry == FILES.end()) {
     cerr << "[ramfs_write] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
-  auto blocks = entry->second;
-  auto block_index = int(floor(offset / BLOCK_SIZE));
+  vector<sgx_sealed_data_t*>& blocks = entry->second;
+  auto block_index = size_t(floor(offset / BLOCK_SIZE));
   auto offset_in_block = offset % BLOCK_SIZE;
   auto payload_size = offset_in_block + size;
   uint8_t* plaintext = new uint8_t[payload_size];
+  cout << "[ramfs_write] File contains " << blocks.size() << " blocks" << endl;
+  cout << "[ramfs_write] About to write to block " << block_index << endl;
+  if (block_index < blocks.size()) {
+    sgx_sealed_data_t* block = blocks[block_index];
+    auto current_sealed_size = sizeof(sgx_sealed_data_t) + block->aes_data.payload_size;
+    auto new_sealed_size = sizeof(sgx_sealed_data_t) + block->aes_data.payload_size;
+    sgx_status_t ret;
+    ramfs_decrypt(ENCLAVE_ID,
+                  &ret,
+                  filename.c_str(),
+                  block, current_sealed_size,
+                  plaintext, block->aes_data.payload_size);
+    for (size_t i = 0; i < size; i++) {
+      plaintext[offset_in_block + i] = data[i];
+    }
+    cout << "YUP...";
+    free(block);
+    cout << "YUP" << endl;
+    block = (sgx_sealed_data_t*) malloc(new_sealed_size);
+    ramfs_encrypt(ENCLAVE_ID,
+                  &ret,
+                  filename.c_str(),
+                  plaintext, payload_size,
+                  block, new_sealed_size);
+    FILES[filename][block_index] = block;
+    delete [] plaintext;
+    return size;
+  }
   auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
   auto block = (sgx_sealed_data_t*) malloc(sealed_size);
 
@@ -220,13 +248,8 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                                       filename.c_str(),
                                       plaintext, payload_size,
                                       block, sealed_size);
-  cout << "[ramfs_write] status = " << status << endl;
-  cout << "[ramfs_write] ret    = " << ret << endl;
-  cout << "[ramfs_write] wrote " << size << " bytes" << endl;
-  print_sealed_data(block);
   FILES[filename].push_back(block);
   delete [] plaintext;
-  cout << "[ramfs_write] exiting" << endl;
   return size;
 }
 
@@ -284,37 +307,89 @@ int ramfs_truncate(const char *path, off_t length) {
     return -ENOENT;
   }
 
-  auto blocks = entry->second;
-  cout << "[ramfs_truncate] resizing data" << endl;
-  if (blocks.empty()) {
+  vector<sgx_sealed_data_t*>& blocks = entry->second;
+  auto file_size = compute_file_size(blocks);
+
+  cout << "[ramfs_truncate] file size = " << file_size << ", length = " << length << endl;
+
+  if (file_size == length) {
+    return 0;
+  }
+
+  cout << "[ramfs_truncate] POUET" << endl;
+
+
+  if (file_size <= length) {
+    auto length_difference = length - blocks.size();
+    auto blocks_to_add = (size_t) floor(length_difference / BLOCK_SIZE);
+    if (blocks_to_add > 0) {
+      uint8_t* dummy_text = new uint8_t[BLOCK_SIZE];
+      size_t sealed_size = sizeof(sgx_sealed_data_t) + BLOCK_SIZE;
+      sgx_sealed_data_t* dummy_block = (sgx_sealed_data_t*) malloc(sealed_size);
+      sgx_status_t ret;
+      ramfs_encrypt(ENCLAVE_ID,
+                    &ret,
+                    filename.c_str(),
+                    dummy_text, BLOCK_SIZE,
+                    dummy_block, sealed_size);
+      for (size_t i = 0; i < blocks_to_add; i++) {
+        sgx_sealed_data_t* block_copy = (sgx_sealed_data_t*) malloc(sealed_size);
+        memcpy(block_copy, dummy_block, sealed_size);
+        blocks.push_back(block_copy);
+      }
+      free(dummy_block);
+      delete [] dummy_text;
+    }
+    auto length_of_last_block = length % BLOCK_SIZE;
+    if (length_of_last_block > 0) {
+      uint8_t* dummy_text = new uint8_t[length_of_last_block];
+      size_t sealed_size = sizeof(sgx_sealed_data_t) + length_of_last_block;
+      sgx_sealed_data_t* dummy_block = (sgx_sealed_data_t*) malloc(sealed_size);
+      sgx_status_t ret;
+      ramfs_encrypt(ENCLAVE_ID,
+                    &ret,
+                    filename.c_str(),
+                    dummy_text, BLOCK_SIZE,
+                    dummy_block, sealed_size);
+      blocks.push_back(dummy_block);
+      delete [] dummy_text;
+    }
+
     cout << "[ramfs_truncate] exiting" << endl;
     return 0;
   }
 
+
   auto blocks_to_keep = int(ceil(length / BLOCK_SIZE));
-  cout << "[ramfs_truncate] removing unecessary data" << endl;
-  if (blocks.size() > 0) {
-    blocks.erase(blocks.begin() + blocks_to_keep, blocks.end());
+  cout << "[ramfs_truncate] Keeping " << blocks_to_keep << " blocks" << endl;
+  while (blocks_to_keep < blocks.size()) {
+    free(blocks.back());
+    blocks.pop_back();
   }
+  //blocks.erase(blocks.begin() + blocks_to_keep, blocks.end());
+  cout << "[ramfs_truncate] " << blocks_to_keep << " blocks left" << endl;
+  if (blocks.empty()) {
+    return 0;
+  }
+
   auto block_to_trim = blocks.back();
   auto bytes_to_keep = length % BLOCK_SIZE;
-
-  uint8_t* plaintext = new uint8_t[bytes_to_keep];
-  cout << "[ramfs_truncate] decrypting data" << endl;
+  auto payload_size = block_to_trim->aes_data.payload_size;
+  auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
+  uint8_t* plaintext = new uint8_t[payload_size];
   sgx_status_t ret;
   ramfs_decrypt(ENCLAVE_ID,
                 &ret,
                 filename.c_str(),
-                block_to_trim, sizeof(sgx_sealed_data_t) + BLOCK_SIZE,
-                plaintext, bytes_to_keep);
-  cout << "[ramfs_truncate] encrypting data back" << endl;
+                block_to_trim, sealed_size,
+                plaintext, payload_size);
   ramfs_encrypt(ENCLAVE_ID,
                 &ret,
                 filename.c_str(),
                 plaintext, bytes_to_keep,
                 block_to_trim, sizeof(sgx_sealed_data_t) + bytes_to_keep);
+  delete [] plaintext;
   cout << "[ramfs_truncate] exiting" << endl;
-  delete plaintext;
 
   return 0;
 }
