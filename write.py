@@ -23,7 +23,7 @@ def write(path, size):
     }
     with open(path, "wb") as handle:
         for offset in range(0, size, DEFAULT_BLOCKSIZE):
-            data = os.urandom(DEFAULT_BLOCKSIZE)
+            data = os.urandom(min(size - offset , DEFAULT_BLOCKSIZE))
             start = time.time()
             handle.write(data)
             end = time.time()
