@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+
 #include <iostream>
 #include <map>
 #include <string>
@@ -29,19 +30,69 @@ using namespace std;
 static const size_t BLOCK_SIZE = 4096;
 
 static map<string, vector<sgx_sealed_data_t*>> FILES;
-
-static string strip_leading_slash(string filename) {
-  bool starts_with_slash = false;
-
-  if (filename.size() > 0)
-    if (filename[0] == '/')
-      starts_with_slash = true;
-
-  return starts_with_slash ? filename.substr(1, string::npos) : filename;
-}
+static map<string, bool> DIRECTORIES;
 
 sgx_enclave_id_t ENCLAVE_ID;
 
+static string strip_leading_slash(const string filename) {
+	string stripped = filename;
+	while (stripped.length() > 0 && stripped.front() == '/') {
+		stripped = stripped.substr(1, string::npos);
+	}
+	return stripped;
+}
+
+static string strip_trailing_slash(const string filename) {
+	string stripped = filename;
+	while (stripped.length() > 0 && stripped.back() == '/') {
+		stripped.pop_back();
+	}
+	return stripped;
+}
+
+static string clean_path(const string filename) {
+	string trimmed = strip_leading_slash(strip_trailing_slash(filename));
+	size_t position ;
+	while ((position = trimmed.find("//")) != string::npos) {
+		trimmed = trimmed.replace(position, 2, "/");
+	}
+	return trimmed;
+}
+
+static bool starts_with(const string pattern, const string path) {
+    if (path.length() <= pattern.length()) {
+        return false;
+    }
+    return path.compare(0, pattern.length(), pattern.c_str()) == 0;
+}
+
+static string get_relative_path(const string directory, const string file) {
+	string directory_path = clean_path(directory);
+	string file_path = clean_path(file);
+	if (!starts_with(directory_path, file_path)) {
+		throw runtime_error("directory and file do not start with the same substring");
+	}
+	return clean_path(file_path.substr(directory_path.length(), string::npos));
+}
+
+/**
+ * Test if a file is located in a directory NOT in its subdirectories.
+ * @param directory Path to the directory
+ * @param file Path to the file
+ * @return True if the file is directly located in the directory. False otherwise
+ */
+static bool is_in_directory(const string directory, const string file) {
+	string directory_path = clean_path(directory);
+	string file_path = clean_path(file);
+    if (!starts_with(directory_path, file_path)) {
+		return false;
+	}
+    string relative_file_path = get_relative_path(directory_path, file_path);
+    if (relative_file_path.find("/") != string::npos) {
+        return false;
+    }
+    return true;
+}
 
 static void print_buffer(const uint8_t* buffer, size_t payload_size) {
   printf("[ ");
@@ -78,55 +129,64 @@ void ocall_print(const char* str) {
 }
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
-  string filename = path;
-  string stripped_slash = strip_leading_slash(filename);
-  int res = 0;
-  memset(stbuf, 0, sizeof(struct stat));
+  string filename = clean_path(path);
 
+  memset(stbuf, 0, sizeof(struct stat));
   stbuf->st_uid = getuid();
   stbuf->st_gid = getgid();
   stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
-  if (filename == "/") {
-    cout << "ramfs_getattr(" << filename << "): Returning attributes for /"
-         << endl;
+  if (DIRECTORIES.find(filename) != DIRECTORIES.end() || string(path).compare("/") == 0) {
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_nlink = 2;
+    stbuf->st_size = BLOCK_SIZE;
 
-  } else { 
-    auto entry = FILES.find(stripped_slash);
-    if (entry != FILES.end()) {
-      vector<sgx_sealed_data_t*> data = entry->second;
-      stbuf->st_size = compute_file_size(data);
-
-      stbuf->st_mode = S_IFREG | 0777;
-      stbuf->st_nlink = 1;
-      
-    } else {
-      res = -ENOENT;
-    }
+    return 0;
   }
-  return res;
+
+  if (FILES.find(filename) != FILES.end()) {
+    auto entry = FILES.find(filename);
+    auto data = entry->second;
+    stbuf->st_size = compute_file_size(data);
+    stbuf->st_mode = S_IFREG | 0777;
+    stbuf->st_nlink = 1;
+    return 0;
+  }
+  cerr << "[ramfs_getattr] Could not find entry for " << path << endl;
+  return -ENOENT;
 }
 
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
-  if (strcmp(path, "/") != 0) {
-    cout << "ramfs_readdir(" << path << "): Only / allowed" << endl;
-    return -ENOENT;
+  string pathname = clean_path(path);
+  if (FILES.find(pathname) != FILES.end()) {
+	  return -ENOTDIR;
+  }
+  if (!pathname.empty() && DIRECTORIES.find(pathname) == DIRECTORIES.end()) {
+	  return -ENOENT;
   }
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
-  
+  vector<string> entries;
+  for (auto it = DIRECTORIES.begin(); it != DIRECTORIES.end(); it++) {
+      if (is_in_directory(pathname, it->first)) {
+		  entries.push_back(get_relative_path(pathname, it->first));
+      }
+  }
   for (auto it = FILES.begin(); it != FILES.end(); it++) {
-    filler(buf, it->first.c_str(), NULL, 0);
+	  if (is_in_directory(pathname, it->first)) {
+		  entries.push_back(get_relative_path(pathname, it->first));
+      }
+  }
+  for (auto it = entries.begin(); it != entries.end(); it++) {
+    filler(buf, it->c_str(), NULL, 0);
   }
 
   return 0;
 }
 
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
-  string filename = strip_leading_slash(path);
+  string filename = clean_path(path);
   if (FILES.find(filename) == FILES.end()) {
     cout << "ramfs_open(" << filename << "): Not found" << endl;
     return -ENOENT;
@@ -137,7 +197,7 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
 
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
-  string filename = strip_leading_slash(path);
+  string filename = clean_path(path);
   auto entry = FILES.find(filename);
   
   if (entry == FILES.end()) {
@@ -196,7 +256,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
-  string filename = strip_leading_slash(path);
+  string filename = clean_path(path);
   auto entry = FILES.find(filename);
   if (entry == FILES.end()) {
     cerr << "[ramfs_write] " << filename << ": Not found" << endl;
@@ -253,13 +313,13 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 }
 
 int ramfs_unlink(const char *pathname) {
-  string filename = strip_leading_slash(pathname);
+  string filename = clean_path(pathname);
   FILES.erase(filename);
   return 0;
 }
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
-  string filename = strip_leading_slash(path);
+  string filename = clean_path(path);
 
   if (FILES.find(filename) != FILES.end()) {
     cerr << "ramfs_create(" << filename << "): Already exists" << endl;
@@ -272,11 +332,6 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     return -EINVAL;
   }
   FILES[filename] = vector<sgx_sealed_data_t*>();
-  cout << "Files in the system:" << endl;
-  for (auto it = FILES.begin(); it != FILES.end(); it++) {
-    cout << "  * " << it->first << endl;
-  }
-
   return 0;
 }
 
@@ -298,7 +353,7 @@ int ramfs_access(const char *path, int) {
 
 int ramfs_truncate(const char *path, off_t length) {
   cout << "[ramfs_truncate] entering" << endl;
-  string filename = strip_leading_slash(path);
+  string filename = clean_path(path);
 
   auto entry = FILES.find(filename);
   if (entry == FILES.end()) {
@@ -397,13 +452,43 @@ int ramfs_mknod(const char *path, mode_t mode, dev_t dev) {
   cout << "ramfs_mknod not implemented" << endl;
   return -EINVAL;
 }
-int ramfs_mkdir(const char *, mode_t) {
-  cout << "ramfs_mkdir not implemented" << endl;
-  return -EINVAL;
+int ramfs_mkdir(const char* dir_path, mode_t mode) {
+    string path = clean_path(dir_path);
+    if (path.length() == 0) {
+        return -1;
+    }
+    auto existing_directory = DIRECTORIES.find(path);
+    if (existing_directory != DIRECTORIES.end()) {
+        return 0;
+    }
+    auto existing_file = FILES.find(path);
+    if (existing_file != FILES.end()) {
+        cerr << "A file with the name " << path << " already exists!" << endl;
+        return -1;
+    }
+    if (path[path.length() - 1] == '/') {
+        path = path.substr(0, path.length() - 1);
+    }
+    DIRECTORIES[path] = true;
+    return 0;
 }
-int ramfs_rmdir(const char *) {
-  cout << "ramfs_rmdir not implemented" << endl;
-  return -EINVAL;
+int ramfs_rmdir(const char *path) {
+    string directory = clean_path(path);
+    if (FILES.find(directory) != FILES.end()) {
+        errno = ENOTDIR;
+        return -1;
+    }
+    if (FILES.lower_bound(directory) != FILES.end()) {
+        errno = ENOTEMPTY;
+        return -1;
+    }
+    auto entry = DIRECTORIES.find(directory);
+    if (entry == DIRECTORIES.end()) {
+        errno = ENOENT;
+        return -1;
+    }
+    DIRECTORIES.erase(entry);
+    return 0;
 }
 int ramfs_symlink(const char *, const char *) {
   cout << "ramfs_symlink not implemented" << endl;
