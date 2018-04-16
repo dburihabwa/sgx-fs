@@ -2,12 +2,23 @@
  * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
  * https://github.com/pfisterer/fuse-ramfs
  */
+
 #include <cassert>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <string>
+#include <sys/types.h>
+#include <unistd.h>
 #include <vector>
+
+
+#define FUSE_USE_VERSION 26
+#include <fcntl.h>
+#include <fuse.h>
 
 using namespace std;
 
@@ -61,18 +72,6 @@ static size_t compute_file_size(vector<sgx_sealed_data_t*> &data) {
   }
   return size;
 }
-
-
-extern "C" {
-
-#define FUSE_USE_VERSION 26
-#include <errno.h>
-#include <fcntl.h>
-#include <fuse.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 void ocall_print(const char* str) {
   printf("[ocall_print] %s\n", str);
@@ -483,5 +482,4 @@ int main(int argc, char **argv) {
   ramfs_oper.destroy = destroy;
 
   return fuse_main(argc, argv, &ramfs_oper, NULL);
-}
 }
