@@ -206,13 +206,11 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
   auto blocks = entry->second;
   auto block_index = size_t(floor(offset / BLOCK_SIZE));
   if (blocks.size() <= block_index) {
-    cerr << "[ramfs_read] " << filename << ": offset too large" << endl;
-    return -ENOENT;
+    return 0;
   }
-  auto max_size = blocks.size() * BLOCK_SIZE;
+  auto max_size = compute_file_size(&blocks);
   if (max_size < (offset + size)) {
-    cerr << "[ramfs_read] " << filename << ": offset + size too large" << endl;
-    return -ENOENT;
+    return 0;
   }
   sgx_sealed_data_t* block = entry->second[block_index];
  
