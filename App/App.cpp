@@ -530,6 +530,18 @@ void destroy(void* private_data) {
   sgx_destroy_enclave(ENCLAVE_ID);
 }
 
+int ramfs_flush(const char* path, struct fuse_file_info* fi) {
+    return 0;
+}
+
+int ramfs_release(const char* path, struct fuse_file_info *fi) {
+    return 0;
+}
+
+int ramfs_fsync(const char* path, int isdatasync, struct fuse_file_info* fi) {
+  return 0;
+}
+
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
@@ -563,6 +575,9 @@ int main(int argc, char **argv) {
   ramfs_oper.utimens = ramfs_utimens;
   ramfs_oper.bmap = ramfs_bmap;
   ramfs_oper.destroy = destroy;
+  ramfs_oper.flush = ramfs_flush;
+  ramfs_oper.release = ramfs_release;
+  ramfs_oper.fsync = ramfs_fsync;
 
   return fuse_main(argc, argv, &ramfs_oper, NULL);
 }
