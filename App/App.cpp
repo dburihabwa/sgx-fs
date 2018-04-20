@@ -115,11 +115,10 @@ static void print_sealed_data(sgx_sealed_data_t* block) {
   cout << "}" << endl;
 }
 
-static size_t compute_file_size(vector<sgx_sealed_data_t*> &data) {
+static size_t compute_file_size(vector<sgx_sealed_data_t*>* data) {
   size_t size = 0;
-  for (auto it = data.begin(); it != data.end(); it++) {
-    sgx_sealed_data_t* sealed_block = (sgx_sealed_data_t*) (*it);
-    size += sealed_block->aes_data.payload_size;
+  for (auto it = data->begin(); it != data->end(); it++) {
+    size += (*it)->aes_data.payload_size;
   }
   return size;
 }
@@ -147,7 +146,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
   if (FILES.find(filename) != FILES.end()) {
     auto entry = FILES.find(filename);
     auto data = entry->second;
-    stbuf->st_size = compute_file_size(data);
+    stbuf->st_size = compute_file_size(&data);
     stbuf->st_mode = S_IFREG | 0777;
     stbuf->st_nlink = 1;
     return 0;
@@ -361,7 +360,7 @@ int ramfs_truncate(const char *path, off_t length) {
   }
 
   vector<sgx_sealed_data_t*>& blocks = entry->second;
-  auto file_size = compute_file_size(blocks);
+  auto file_size = compute_file_size(&blocks);
 
   cout << "[ramfs_truncate] file size = " << file_size << ", length = " << length << endl;
 
