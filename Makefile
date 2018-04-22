@@ -73,8 +73,8 @@ else
 	Urts_Library_Name := sgx_urts
 endif
 
-# App_Cpp_Files := App/App.cpp $(wildcard App/Edger8rSyntax/*.cpp) $(wildcard App/TrustedLibrary/*.cpp)
-App_Cpp_Files := App/App.cpp App/sgx_utils/sgx_utils.cpp
+# App_Cpp_Files := sgx-ramfs/App.cpp $(wildcard sgx-ramfs/Edger8rSyntax/*.cpp) $(wildcard sgx-ramfs/TrustedLibrary/*.cpp)
+App_Cpp_Files := sgx-ramfs/App.cpp sgx-ramfs/sgx_utils/sgx_utils.cpp
 # App_Include_Paths := -IInclude -IApp -I$(SGX_SDK)/include
 App_Include_Paths := -IApp -I$(SGX_SDK)/include
 
@@ -103,7 +103,7 @@ endif
 
 App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
 
-App_Name := app
+App_Name := app-sgx-ramfs
 
 ######## Enclave Settings ########
 
@@ -168,19 +168,19 @@ endif
 
 ######## App Objects ########
 
-App/Enclave_u.c: $(SGX_EDGER8R) Enclave/Enclave.edl
-	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
+sgx-ramfs/Enclave_u.c: $(SGX_EDGER8R) Enclave/Enclave.edl
+	@cd sgx-ramfs && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
-App/Enclave_u.o: App/Enclave_u.c
+sgx-ramfs/Enclave_u.o: sgx-ramfs/Enclave_u.c
 	@$(CC) $(App_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
-App/%.o: App/%.cpp
+sgx-ramfs/%.o: sgx-ramfs/%.cpp
 	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-$(App_Name): App/Enclave_u.o $(App_Cpp_Objects)
+$(App_Name): sgx-ramfs/Enclave_u.o $(App_Cpp_Objects)
 	@$(CXX) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
@@ -210,4 +210,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
