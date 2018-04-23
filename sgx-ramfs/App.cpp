@@ -139,7 +139,6 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   string filename = clean_path(path);
   auto entry = FILES.find(filename);
-  
   if (entry == FILES.end()) {
     cerr << "[ramfs_read] " << filename << ": Not found" << endl;
     return -ENOENT;
@@ -150,14 +149,10 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     return 0;
   }
   auto max_size = compute_file_size(&blocks);
-  if (max_size < (offset + size)) {
-    return 0;
-  }
   sgx_sealed_data_t* block = entry->second[block_index];
  
   auto payload_size = block->aes_data.payload_size;
   auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
-
 
   sgx_status_t read;
   ramfs_decrypt(ENCLAVE_ID, &read,
@@ -189,7 +184,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     default:
       break;
   }
-  return size;
+  return payload_size;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
