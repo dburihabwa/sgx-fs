@@ -2,6 +2,7 @@
 #include <cstring>
 #include <ctime>
 #include <ios>
+#include <iostream>
 #include <sys/time.h>
 
 #include "logging.h"
@@ -37,6 +38,7 @@ void Logger::info(const string line) {
     char *buffer = new char[31];
     get_time_in_iso8601(buffer);
     this->stream << "[" << buffer << "] INFO:  " << line << endl;
+    cout << "[" << buffer << "] INFO:  " << line << endl;
     delete[] buffer;
 }
 
@@ -44,5 +46,6 @@ void Logger::error(const string line) {
     char *buffer = new char[31];
     get_time_in_iso8601(buffer);
     this->stream << "[" << buffer << "] ERROR: " << line << endl;
+    cerr << "[" << buffer << "] INFO:  " << line << endl;
     delete[] buffer;
 }
