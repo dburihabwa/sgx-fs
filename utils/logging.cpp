@@ -3,6 +3,7 @@
 #include <ctime>
 #include <ios>
 #include <iostream>
+#include <sstream>
 #include <sys/time.h>
 
 #include "logging.h"
@@ -48,4 +49,10 @@ void Logger::error(const string line) {
     this->stream << "[" << buffer << "] ERROR: " << line << endl;
     cerr << "[" << buffer << "] INFO:  " << line << endl;
     delete[] buffer;
+}
+
+string convert_pointer_to_string(const void *pointer) {
+    stringstream oss;
+    oss << pointer;
+    return string(oss.str());
 }

@@ -10,12 +10,17 @@ using namespace std;
 class Logger {
 public:
     Logger(const string pathname);
+
     ~Logger();
 
     void error(const string line);
+
     void info(const string line);
+
 private:
     ofstream stream;
 };
+
+string convert_pointer_to_string(const void *pointer);
 
 #endif //FUSEGX_LOGGING_H

@@ -54,6 +54,7 @@ void ocall_print(const char *str) {
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
     string filename = clean_path(path);
+    LOGGER.info("ramfs_getattr(" + filename + ") Entering");
 
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_uid = getuid();
@@ -76,7 +77,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
         stbuf->st_nlink = 1;
         return 0;
     }
-    LOGGER.error("[ramfs_getattr] Could not find entry for " + filename);
+    LOGGER.error("ramfs_getattr(" + filename + "): Could not find entry");
     return -ENOENT;
 }
 
@@ -112,7 +113,7 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
     if (FILES.find(filename) == FILES.end()) {
-        LOGGER.error("ramfs_open(" + filename  + "): Not found");
+        LOGGER.error("ramfs_open(" + filename + "): Not found");
         return -ENOENT;
     }
 
@@ -122,17 +123,20 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
     string filename = clean_path(path);
+    LOGGER.info("ramfs_read(" + filename + ") Entering");
     auto entry = FILES.find(filename);
     if (entry == FILES.end()) {
-        LOGGER.error("[ramfs_read] " + filename + ": Not found");
+        LOGGER.error("ramfs_read(" + filename + "): Not found");
         return -ENOENT;
     }
     auto blocks = entry->second;
+    LOGGER.info("ramfs_read(" + filename + ") Reading from block vector " + convert_pointer_to_string(&blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     if (blocks.size() <= block_index) {
+        LOGGER.info("ramfs_read(" + filename + ") Exiting because block_index is higher than blocks.size()");
         return 0;
     }
-    sgx_sealed_data_t *block = entry->second[block_index];
+    sgx_sealed_data_t *block = blocks[block_index];
 
     auto payload_size = block->aes_data.payload_size;
     auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
@@ -169,24 +173,26 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
         default:
             break;
     }
+
+    LOGGER.info("ramfs_read(" + filename + ") Exiting -> " + to_string(payload_size));
     return payload_size;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
     string filename = clean_path(path);
+    LOGGER.info("ramfs_write(" + filename + "): Entering");
     auto entry = FILES.find(filename);
     if (entry == FILES.end()) {
-        LOGGER.error("[ramfs_write] " + filename + ": Not found");
+        LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
-    LOGGER.info("[ramfs_write] Entering " + filename);
     vector < sgx_sealed_data_t * > &blocks = entry->second;
+    LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(&blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
     auto payload_size = offset_in_block + size;
-    LOGGER.info(
-            "[ramfs_write] Writing to block " + to_string(block_index) + " (max = " + to_string(blocks.size()) + ")");
+    LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (max = " + to_string(blocks.size() - 1) + ")");
     if (block_index < blocks.size()) {
         sgx_sealed_data_t *block = blocks[block_index];
         auto current_payload_size = block->aes_data.payload_size;
@@ -212,7 +218,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                       block, new_sealed_size);
         FILES[filename][block_index] = block;
         delete[] plaintext;
-        LOGGER.info("[ramfs_write] Exiting " + filename);
+        LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
         return size;
     }
     uint8_t *plaintext = new uint8_t[payload_size];
@@ -230,7 +236,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                                         block, sealed_size);
     FILES[filename].push_back(block);
     delete[] plaintext;
-    LOGGER.info("[ramfs_write] Exiting " + filename);
+    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
     return size;
 }
 
@@ -242,6 +248,7 @@ int ramfs_unlink(const char *pathname) {
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     string filename = clean_path(path);
+    LOGGER.info("ramfs_create(" + filename + ") Entering");
 
     if (FILES.find(filename) != FILES.end()) {
         LOGGER.error("ramfs_create(" + filename + "): Already exists");
@@ -252,7 +259,10 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
         LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
-    FILES[filename] = vector<sgx_sealed_data_t *>();
+    auto blocks = vector<sgx_sealed_data_t *>();
+    FILES[filename] = blocks;
+    LOGGER.info("ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string(&blocks));
+    LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
 
