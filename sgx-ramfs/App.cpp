@@ -53,7 +53,7 @@ void ocall_print(const char *str) {
     printf("[ocall_print] %s\n", str);
 }
 
-static int ramfs_getattr(const char *path, struct stat *stbuf) {
+int ramfs_getattr(const char *path, struct stat *stbuf) {
     string filename = clean_path(path);
     LOGGER.info("ramfs_getattr(" + filename + ") Entering");
 
@@ -82,7 +82,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
     return -ENOENT;
 }
 
-static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
     string pathname = clean_path(path);
     if (FILES.find(pathname) != FILES.end()) {
@@ -111,7 +111,7 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return 0;
 }
 
-static int ramfs_open(const char *path, struct fuse_file_info *fi) {
+int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
     if (FILES.find(filename) == FILES.end()) {
         LOGGER.error("ramfs_open(" + filename + "): Not found");
@@ -121,7 +121,7 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 
-static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
+int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
     string filename = clean_path(path);
     LOGGER.info("ramfs_read(" + filename + ") Entering");
