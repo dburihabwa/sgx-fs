@@ -32,7 +32,8 @@ using namespace std;
 
 static const size_t BLOCK_SIZE = 4096;
 
-static map <string, vector<sgx_sealed_data_t *>> FILES;
+static map<string, vector < sgx_sealed_data_t * >*>
+FILES;
 static map<string, bool> DIRECTORIES;
 
 sgx_enclave_id_t ENCLAVE_ID;
@@ -71,8 +72,8 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
 
     if (FILES.find(filename) != FILES.end()) {
         auto entry = FILES.find(filename);
-        auto data = entry->second;
-        stbuf->st_size = compute_file_size(&data);
+        auto blocks = entry->second;
+        stbuf->st_size = compute_file_size(blocks);
         stbuf->st_mode = S_IFREG | 0777;
         stbuf->st_nlink = 1;
         return 0;
@@ -130,16 +131,20 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
         return -ENOENT;
     }
     auto blocks = entry->second;
-    LOGGER.info("ramfs_read(" + filename + ") Reading from block vector " + convert_pointer_to_string(&blocks));
+    LOGGER.info("ramfs_read(" + filename + ") Reading from block vector " + convert_pointer_to_string(blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
-    if (blocks.size() <= block_index) {
-        LOGGER.info("ramfs_read(" + filename + ") Exiting because block_index is higher than blocks.size()");
+    if (blocks->size() <= block_index) {
+        LOGGER.error("ramfs_read(" + filename + ") Exiting because block_index is higher than blocks.size()");
         return 0;
     }
-    sgx_sealed_data_t *block = blocks[block_index];
+    LOGGER.info("ramfs_read(" + filename + ") Reading from block " + to_string(block_index));
+    sgx_sealed_data_t *block = blocks->data()[block_index];
+
+    LOGGER.info("ramfs_read(" + filename + ") Block location " + convert_pointer_to_string(block));
 
     auto payload_size = block->aes_data.payload_size;
     auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
+    LOGGER.info("ramfs_read(" + filename + ") Payload size in the block " + to_string(payload_size));
 
     sgx_status_t read;
     ramfs_decrypt(ENCLAVE_ID, &read,
@@ -187,14 +192,17 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
         LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
-    vector < sgx_sealed_data_t * > &blocks = entry->second;
-    LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(&blocks));
+    auto blocks = entry->second;
+    LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
     auto payload_size = offset_in_block + size;
-    LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (max = " + to_string(blocks.size() - 1) + ")");
-    if (block_index < blocks.size()) {
-        sgx_sealed_data_t *block = blocks[block_index];
+    auto max_block = blocks->size() + 1;
+    LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (payload_size = " +
+                to_string(payload_size) + ")");
+    if (block_index < blocks->size()) {
+        sgx_sealed_data_t *block = blocks->data()[block_index];
+        LOGGER.info("ramfs_write(" + filename + ") Modifying block " + convert_pointer_to_string(block));
         auto current_payload_size = block->aes_data.payload_size;
         auto current_sealed_size = sizeof(sgx_sealed_data_t) + block->aes_data.payload_size;
         auto new_payload_size = (payload_size > current_payload_size) ? payload_size : current_payload_size;
@@ -216,7 +224,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                       filename.c_str(),
                       plaintext, new_payload_size,
                       block, new_sealed_size);
-        FILES[filename][block_index] = block;
+        (*FILES[filename])[block_index] = block;
         delete[] plaintext;
         LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
         return size;
@@ -224,17 +232,20 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     uint8_t *plaintext = new uint8_t[payload_size];
     auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
     auto block = (sgx_sealed_data_t *) malloc(sealed_size);
+    LOGGER.info("ramfs_write(" + filename + ") Writing to block at " + convert_pointer_to_string(block));
 
     for (size_t i = 0; i < size; i++) {
         plaintext[offset_in_block + i] = data[i];
     }
+    LOGGER.info("ramfs_write(" + filename + ") Payload size in the block " + to_string(block->aes_data.payload_size));
     sgx_status_t ret;
     sgx_status_t status = ramfs_encrypt(ENCLAVE_ID,
                                         &ret,
                                         filename.c_str(),
                                         plaintext, payload_size,
                                         block, sealed_size);
-    FILES[filename].push_back(block);
+    LOGGER.info("ramfs_write(" + filename + ") Payload size in the block " + to_string(block->aes_data.payload_size));
+    blocks->push_back(block);
     delete[] plaintext;
     LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
     return size;
@@ -242,6 +253,17 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 
 int ramfs_unlink(const char *pathname) {
     string filename = clean_path(pathname);
+    auto entry = FILES.find(filename);
+    if (entry == FILES.end()) {
+        return -ENOENT;
+    }
+    auto blocks = entry->second;
+    for (auto it = blocks->begin(); it != blocks->end(); it++) {
+        auto block = (*it);
+        free(block);
+    }
+    blocks->clear();
+    delete blocks;
     FILES.erase(filename);
     return 0;
 }
@@ -259,9 +281,9 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
         LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
-    auto blocks = vector<sgx_sealed_data_t *>();
-    FILES[filename] = blocks;
-    LOGGER.info("ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string(&blocks));
+    FILES[filename] = new vector<sgx_sealed_data_t *>();
+    LOGGER.info(
+            "ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string(FILES[filename]));
     LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
@@ -293,8 +315,8 @@ int ramfs_truncate(const char *path, off_t length) {
         return -ENOENT;
     }
 
-    vector < sgx_sealed_data_t * > &blocks = entry->second;
-    auto file_size = compute_file_size(&blocks);
+    auto blocks = entry->second;
+    auto file_size = compute_file_size(blocks);
 
     LOGGER.info("[ramfs_truncate] file size = " + to_string(file_size) + ", length = " + to_string(len));
 
@@ -306,7 +328,7 @@ int ramfs_truncate(const char *path, off_t length) {
 
 
     if (file_size <= len) {
-        auto length_difference = len - blocks.size();
+        auto length_difference = len - blocks->size();
         auto blocks_to_add = (size_t) floor(length_difference / BLOCK_SIZE);
         if (blocks_to_add > 0) {
             uint8_t *dummy_text = new uint8_t[BLOCK_SIZE];
@@ -321,7 +343,7 @@ int ramfs_truncate(const char *path, off_t length) {
             for (size_t i = 0; i < blocks_to_add; i++) {
                 sgx_sealed_data_t *block_copy = (sgx_sealed_data_t *) malloc(sealed_size);
                 memcpy(block_copy, dummy_block, sealed_size);
-                blocks.push_back(block_copy);
+                blocks->push_back(block_copy);
             }
             free(dummy_block);
             delete[] dummy_text;
@@ -337,7 +359,7 @@ int ramfs_truncate(const char *path, off_t length) {
                           filename.c_str(),
                           dummy_text, BLOCK_SIZE,
                           dummy_block, sealed_size);
-            blocks.push_back(dummy_block);
+            blocks->push_back(dummy_block);
             delete[] dummy_text;
         }
 
@@ -348,17 +370,17 @@ int ramfs_truncate(const char *path, off_t length) {
 
     auto blocks_to_keep = static_cast<unsigned int>(int(ceil(len / BLOCK_SIZE)));
     LOGGER.info("[ramfs_truncate] Keeping " + to_string(blocks_to_keep) + " blocks");
-    while (blocks_to_keep < blocks.size()) {
-        free(blocks.back());
-        blocks.pop_back();
+    while (blocks_to_keep < blocks->size()) {
+        free(blocks->back());
+        blocks->pop_back();
     }
     //blocks.erase(blocks.begin() + blocks_to_keep, blocks.end());
-    LOGGER.info("[ramfs_truncate] " + to_string(blocks.size()) + " blocks left");
-    if (blocks.empty()) {
+    LOGGER.info("[ramfs_truncate] " + to_string(blocks->size()) + " blocks left");
+    if (blocks->empty()) {
         return 0;
     }
 
-    auto block_to_trim = blocks.back();
+    auto block_to_trim = blocks->back();
     auto bytes_to_keep = len % BLOCK_SIZE;
     auto payload_size = block_to_trim->aes_data.payload_size;
     auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
