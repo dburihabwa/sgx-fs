@@ -174,6 +174,14 @@ logging.o: utils/logging.cpp
 	g++ $< -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
 
+######## Ramfs ########
+ramfs.o: ramfs/App.cpp
+	g++ $< -std=c++11 -c -Wextra -Wunused-but-set-variable -Wunused-function -fPIC -Wno-attributes $(shell pkg-config fuse --cflags) -g -o $@
+
+ramfs.bin: ramfs.o fs.o logging.o
+	g++ $^ -o $@ -lpthread $(shell pkg-config fuse --libs)
+
+
 ######## App Objects ########
 
 sgx-ramfs/Enclave_u.c: $(SGX_EDGER8R) Enclave/Enclave.edl
@@ -218,4 +226,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.bin ramfs.o
