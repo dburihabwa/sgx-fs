@@ -38,7 +38,7 @@ static map<string, bool> DIRECTORIES;
 
 sgx_enclave_id_t ENCLAVE_ID;
 
-static Logger LOGGER("./safefs.log");
+static Logger LOGGER("./sgx-ramfs.log");
 
 
 static size_t compute_file_size(vector<sgx_sealed_data_t *> *data) {
