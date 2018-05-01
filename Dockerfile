@@ -16,4 +16,5 @@ RUN cd /opt/linux-sgx/linux/installer/bin &&\
     echo -e "\n##### Intel SGX SDK\nsource /opt/linux-sgx/linux/installer/bin/sgxsdk/environment\n" >> ~/.bashrc
 COPY . /opt/sfusegx/
 WORKDIR /opt/sfusegx
-RUN /bin/bash -c "source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment" make SGX_MODE=HW DEBUG=1 SGX_PRERELEASE=1
+RUN /bin/bash -c "source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment" make SGX_MODE=HW DEBUG=1 SGX_PRERELEASE=1 &&\
+    make ramfs.bin
