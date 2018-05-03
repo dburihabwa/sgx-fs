@@ -290,17 +290,14 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
 
 int ramfs_fgetattr(const char *path, struct stat *stbuf,
                    struct fuse_file_info *) {
-    cout << "ramfs_fgetattr(" << path << "): Delegating to ramfs_getattr" << endl;
     return ramfs_getattr(path, stbuf);
 }
 
 int ramfs_opendir(const char *path, struct fuse_file_info *) {
-    cout << "ramfs_opendir(" << path << "): access granted" << endl;
     return 0;
 }
 
 int ramfs_access(const char *path, int) {
-    cout << "ramfs_access(" << path << ") access granted" << endl;
     return 0;
 }
 
