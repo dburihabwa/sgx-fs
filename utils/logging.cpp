@@ -35,7 +35,7 @@ Logger::~Logger() {
     this->stream.close();
 }
 
-void Logger::info(const string line) {
+void Logger::info(const string &line) {
     char *buffer = new char[31];
     get_time_in_iso8601(buffer);
     this->stream << "[" << buffer << "] INFO:  " << line << endl;
@@ -43,13 +43,14 @@ void Logger::info(const string line) {
     delete[] buffer;
 }
 
-void Logger::error(const string line) {
+void Logger::error(const string &line) {
     char *buffer = new char[31];
     get_time_in_iso8601(buffer);
     this->stream << "[" << buffer << "] ERROR: " << line << endl;
     cerr << "[" << buffer << "] INFO:  " << line << endl;
     delete[] buffer;
 }
+
 
 string convert_pointer_to_string(const void *pointer) {
     stringstream oss;

@@ -13,12 +13,20 @@ public:
 
     ~Logger();
 
-    void error(const string line);
+    void error(const string &line);
 
-    void info(const string line);
+    void info(const string &line);
 
 private:
     ofstream stream;
+};
+
+
+class NoOpLogger {
+public:
+    inline NoOpLogger() {}
+    inline void error(const string &) {}
+    inline void info(const string &) {}
 };
 
 string convert_pointer_to_string(const void *pointer);
