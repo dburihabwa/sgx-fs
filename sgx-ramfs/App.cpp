@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <string>
@@ -123,6 +124,7 @@ int ramfs_open(const char *path, struct fuse_file_info *fi) {
 
 int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
+    auto start = chrono::steady_clock::now();
     string filename = clean_path(path);
     LOGGER.info("ramfs_read(" + filename + ") Entering");
     auto entry = FILES.find(filename);
@@ -131,20 +133,15 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
         return -ENOENT;
     }
     auto blocks = entry->second;
-    LOGGER.info("ramfs_read(" + filename + ") Reading from block vector " + convert_pointer_to_string(blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     if (blocks->size() <= block_index) {
         LOGGER.error("ramfs_read(" + filename + ") Exiting because block_index is higher than blocks.size()");
         return 0;
     }
-    LOGGER.info("ramfs_read(" + filename + ") Reading from block " + to_string(block_index));
     sgx_sealed_data_t *block = blocks->data()[block_index];
-
-    LOGGER.info("ramfs_read(" + filename + ") Block location " + convert_pointer_to_string(block));
 
     auto payload_size = block->aes_data.payload_size;
     auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
-    LOGGER.info("ramfs_read(" + filename + ") Payload size in the block " + to_string(payload_size));
 
     sgx_status_t read;
     ramfs_decrypt(ENCLAVE_ID, &read,
@@ -178,8 +175,9 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
         default:
             break;
     }
-
-    LOGGER.info("ramfs_read(" + filename + ") Exiting -> " + to_string(payload_size));
+    auto end = chrono::steady_clock::now();
+    auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
+    LOGGER.info("ramfs_read(" + filename + ") Exiting with " + to_string(payload_size) + " after " + to_string(elapsed.count()) + " microseconds");
     return payload_size;
 }
 
