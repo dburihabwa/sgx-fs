@@ -33,8 +33,7 @@ using namespace std;
 
 static const size_t BLOCK_SIZE = 4096;
 
-static map<string, vector < sgx_sealed_data_t * >*>
-FILES;
+static map<string, vector < sgx_sealed_data_t * >*> FILES;
 static map<string, bool> DIRECTORIES;
 
 sgx_enclave_id_t ENCLAVE_ID;
@@ -56,7 +55,6 @@ void ocall_print(const char *str) {
 
 int ramfs_getattr(const char *path, struct stat *stbuf) {
     string filename = clean_path(path);
-    LOGGER.info("ramfs_getattr(" + filename + ") Entering");
 
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_uid = getuid();
@@ -124,9 +122,8 @@ int ramfs_open(const char *path, struct fuse_file_info *fi) {
 
 int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
-    auto start = chrono::steady_clock::now();
     string filename = clean_path(path);
-    LOGGER.info("ramfs_read(" + filename + ") Entering");
+    auto start = chrono::steady_clock::now();
     auto entry = FILES.find(filename);
     if (entry == FILES.end()) {
         LOGGER.error("ramfs_read(" + filename + "): Not found");
@@ -184,7 +181,6 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
     string filename = clean_path(path);
-    LOGGER.info("ramfs_write(" + filename + "): Entering");
     auto entry = FILES.find(filename);
     if (entry == FILES.end()) {
         LOGGER.error("ramfs_write(" + filename + "): Not found");

@@ -51,7 +51,6 @@ static size_t compute_file_size(const vector < vector < char>*>* blocks) {
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
     string filename = clean_path(path);
-    LOGGER.info("ramfs_getattr(" + filename + ") Entering");
 
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_uid = getuid();
@@ -188,7 +187,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     blocks->push_back(block);
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(i) + " after " + to_string(elapsed.count()) + " microseconds (");
+    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(i) + " after " + to_string(elapsed.count()) + " microseconds");
     return i;
 }
 
