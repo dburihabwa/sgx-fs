@@ -1,9 +1,6 @@
-//
-// Created by dorian on 22/04/18.
-//
-#include "fs.h"
+#include "fs.hpp"
 
-string strip_leading_slash(const string filename) {
+string strip_leading_slash(const string &filename) {
     string stripped = filename;
     while (stripped.length() > 0 && stripped.front() == '/') {
         stripped = stripped.substr(1, string::npos);
@@ -11,7 +8,7 @@ string strip_leading_slash(const string filename) {
     return stripped;
 }
 
-string strip_trailing_slash(const string filename) {
+string strip_trailing_slash(const string &filename) {
     string stripped = filename;
     while (stripped.length() > 0 && stripped.back() == '/') {
         stripped.pop_back();
@@ -19,23 +16,23 @@ string strip_trailing_slash(const string filename) {
     return stripped;
 }
 
-string clean_path(const string filename) {
+string clean_path(const string &filename) {
     string trimmed = strip_leading_slash(strip_trailing_slash(filename));
-    size_t position ;
+    size_t position;
     while ((position = trimmed.find("//")) != string::npos) {
         trimmed = trimmed.replace(position, 2, "/");
     }
     return trimmed;
 }
 
-bool starts_with(const string pattern, const string path) {
+bool starts_with(const string &pattern, const string &path) {
     if (path.length() <= pattern.length()) {
         return false;
     }
     return path.compare(0, pattern.length(), pattern.c_str()) == 0;
 }
 
-string get_relative_path(const string directory, const string file) {
+string get_relative_path(const string &directory, const string &file) {
     string directory_path = clean_path(directory);
     string file_path = clean_path(file);
     if (!starts_with(directory_path, file_path)) {
@@ -50,7 +47,7 @@ string get_relative_path(const string directory, const string file) {
  * @param file Path to the file
  * @return True if the file is directly located in the directory. False otherwise
  */
-bool is_in_directory(const string directory, const string file) {
+bool is_in_directory(const string &directory, const string &file) {
     string directory_path = clean_path(directory);
     string file_path = clean_path(file);
     if (!starts_with(directory_path, file_path)) {

@@ -28,7 +28,7 @@ using namespace std;
 #include "Enclave_u.h"
 #include "sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
-#include "../utils/fs.h"
+#include "../utils/fs.hpp"
 #include "../utils/logging.h"
 
 static const size_t BLOCK_SIZE = 4096;
@@ -61,7 +61,8 @@ int ramfs_getattr(const char *path, struct stat *stbuf) {
     stbuf->st_gid = getgid();
     stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
-    if (DIRECTORIES.find(filename) != DIRECTORIES.end() || string(path).compare("/") == 0) {
+    if (DIRECTORIES.find(filename) != DIRECTORIES.end() ||
+        string(path).compare("/") == 0) {
         stbuf->st_mode = S_IFDIR | 0777;
         stbuf->st_nlink = 2;
         stbuf->st_size = BLOCK_SIZE;
