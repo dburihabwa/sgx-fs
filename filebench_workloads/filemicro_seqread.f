@@ -27,10 +27,11 @@
 # Single threaded sequential reads (1MB I/Os) on a 1G file.
 
 set $dir=/tmp/mnt/fuse
-#set $cached=false
+set $cached=false
 set $filesize=1g
 set $iosize=1m
 set $nthreads=1
+set $sync=false
 
 define file name=largefile,path=$dir,size=$filesize,prealloc,reuse
 
@@ -38,7 +39,7 @@ define process name=filereader,instances=1
 {
   thread name=filereaderthread,memsize=10m,instances=$nthreads
   {
-    flowop read name=seqread-file,filename=largefile,iosize=$iosize
+    flowop read name=seqread-file,dsync=$sync,filename=largefile,iosize=$iosize
   }
 }
 
