@@ -160,29 +160,27 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
     auto payload_size = offset_in_block + size;
-    auto max_block = blocks->size() + 1;
+    auto space_needed = (offset_in_block + size) > BLOCK_SIZE ? BLOCK_SIZE : (offset_in_block + size);
+    // Has the block that will host the data already in the list of blocks
     if (block_index < blocks->size()) {
-        vector<char> *block = blocks->at(block_index);
-        auto current_payload_size = block->size();
-        if (BLOCK_SIZE <= payload_size) {
-            payload_size = BLOCK_SIZE - offset_in_block;
+        vector<char> *block = (*blocks)[block_index];
+        if (block->size() < space_needed) {
+            block->resize(space_needed);
         }
-        size_t length_available = current_payload_size - offset_in_block;
-        for (size_t i = 0; i < length_available; i++) {
+        size_t i;
+        for (i = 0; i < size && i < space_needed; i++) {
             (*block)[i + offset_in_block] = data[i];
         }
-        for (size_t i = length_available; i < payload_size; i++) {
-            block->push_back(data[i]);
-        }
-        return payload_size;
+        auto end = chrono::high_resolution_clock::now();
+        auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
+        LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(i) + " after " + to_string(elapsed.count()) + " microseconds");
+        return i;
     }
+    // Create a block from scratch
+    vector<char> *block = new vector<char>(space_needed);
     size_t i;
-    vector<char> *block = new vector<char>();
-    for (i = 0; i < offset_in_block; i++) {
-        block->push_back(0);
-    }
-    for (; i < size && i < BLOCK_SIZE; i++) {
-        block->push_back(data[i]);
+    for (i = 0; i < size && i < BLOCK_SIZE; i++) {
+        (*block)[i + offset_in_block] = data[i];
     }
     blocks->push_back(block);
     auto end = chrono::high_resolution_clock::now();
