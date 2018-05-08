@@ -17,6 +17,7 @@ MOUNT_POINT=/tmp/mnt/fuse
 
 main() {
   # Unmount previous file system
+  mkdir -p "${MOUNT_POINT}"
   sudo umount --force "${MOUNT_POINT}"
 
   for start_script in "${FS_START_SCRIPTS[@]}"; do
