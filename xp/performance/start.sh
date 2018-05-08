@@ -14,6 +14,25 @@ RUNS=5
 BASE_RESULTS_DIR="fs_results"
 MOUNT_POINT=/tmp/mnt/fuse
 
+wait_for_mounpoint() {
+  if [[ "${#}" -ne 1 ]]; then
+    echo "Usage: wait_for_mounpoint <mountpoint>" >&2
+    exit 0
+  fi
+  local dir="${1}"
+  local count=0
+  local max=60
+  while [[ "${count}" -lt "${max}" ]]; do
+    if [[ $(stat -fc%t:%T "${dir}") != $(stat -fc%t:%T "${dir}/..") ]]; then
+      return 0
+    fi
+    count=$((count + 1))
+    sleep 1
+  done
+  echo "${dir} was not mounted after ${max} seconds"
+  exit 0
+}
+
 
 main() {
   # Unmount previous file system
@@ -38,6 +57,8 @@ main() {
 
         ${start_script} ${MOUNT_POINT} -oallow_other -f 1>/dev/null 2>&1 &
         local pid="${!}"
+        wait_for_mounpoint "${MOUNT_POINT}"
+
         local run_results_dir="${fs_results_dir}/${run}"
         mkdir -p "${run_results_dir}"
         local workload_results_file="${run_results_dir}/$(basename ${workload})"
