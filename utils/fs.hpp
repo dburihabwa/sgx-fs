@@ -48,6 +48,21 @@ bool starts_with(const string &prefix, const string &path);
  */
 string get_relative_path(const string &directory, const string &path);
 
+
+/**
+ * Returns a full path to the library
+ * @param path Path to interpret
+ * @return Absolute path
+ */
+string get_absolute_path(const string &path);
+
+/**
+ * Returns the containing directory of path
+ * @param path Path to interpret
+ * @return Path to the directory
+ */
+string get_directory(const string &path);
+
 /**
  * Test if a file is located in a directory NOT in its subdirectories.
  * @param directory Path to the directory
@@ -55,5 +70,6 @@ string get_relative_path(const string &directory, const string &path);
  * @return True if the file is directly located in the directory. False otherwise
  */
 bool is_in_directory(const string &directory, const string &path);
+
 
 #endif //FUSEGX_FS_H

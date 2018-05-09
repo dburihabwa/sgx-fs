@@ -1,3 +1,6 @@
+#include <climits>
+#include <string>
+
 #include "fs.hpp"
 
 string strip_leading_slash(const string &filename) {
@@ -39,6 +42,26 @@ string get_relative_path(const string &directory, const string &file) {
         throw runtime_error("directory and file do not start with the same substring");
     }
     return clean_path(file_path.substr(directory_path.length(), string::npos));
+}
+
+/**
+ * Returns a full path to the library
+ * @param path Path to interpret
+ * @return Absolute path
+ */
+string get_absolute_path(const string &path) {
+  char absolute_path[PATH_MAX];
+  realpath(path.c_str(), absolute_path);
+  return string(absolute_path);
+}
+
+string get_directory(const string &path) {
+  string absolute_path = get_absolute_path(path);
+  size_t pos = absolute_path.rfind("/");
+  if (pos == string::npos) {
+    return "/";
+  }
+  return absolute_path.substr(0, pos);
 }
 
 /**

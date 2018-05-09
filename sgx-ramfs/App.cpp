@@ -504,7 +504,15 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
-    if (initialize_enclave(&ENCLAVE_ID, "enclave.token", "enclave.signed.so") < 0) {
+    string binary_directory = get_directory(string(argv[0]));
+    string path_to_enclave_token = binary_directory + "/enclave.token";
+    string path_to_enclave_so = binary_directory + "/enclave.signed.so";
+    cout << path_to_enclave_token << endl;
+    cout << path_to_enclave_so << endl;
+    if (initialize_enclave(&ENCLAVE_ID,
+                           path_to_enclave_token,
+                           path_to_enclave_so) < 0)
+    {
         LOGGER.error("Fail to initialize enclave.");
         exit(1);
     }
