@@ -26,6 +26,7 @@ wait_for_mounpoint() {
     if [[ $(stat -fc%t:%T "${dir}") != $(stat -fc%t:%T "${dir}/..") ]]; then
       return 0
     fi
+    echo "Waiting for ${dir} to be mounted..."
     count=$((count + 1))
     sleep 1
   done
@@ -54,14 +55,15 @@ main() {
         fi
         # Unmount previous file system
         sudo umount --force "${MOUNT_POINT}"
-
-        ${start_script} ${MOUNT_POINT} -oallow_other -f 1>/dev/null 2>&1 &
-        local pid="${!}"
-        wait_for_mounpoint "${MOUNT_POINT}"
-
         local run_results_dir="${fs_results_dir}/${run}"
         mkdir -p "${run_results_dir}"
-        local workload_results_file="${run_results_dir}/$(basename ${workload})"
+        local workload_name="$(basename "${workload}")"
+        local workload_results_file="${run_results_dir}/${workload_name}"
+        local workload_fs_log="${run_results_dir}/${workload_name}-fs.log"
+        ${start_script} ${MOUNT_POINT} -oallow_other -f 1>"${workload_fs_log}" 2>&1 &
+        local pid="${!}"
+        echo "Running ${workload} on top of ${start_script} (pid=${pid}) (${run}/${RUNS})"
+        wait_for_mounpoint "${MOUNT_POINT}"
         sudo filebench -f "${workload}" 1>"${workload_results_file}" 2>&1
         continue
       done
