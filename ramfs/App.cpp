@@ -130,13 +130,17 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 		LOGGER.error("ramfs_read(" + filename + ") Exiting because block_index is higher than blocks.size()");
         return 0;
     }
-    vector<char> *block = blocks->at(block_index);
+    vector<char> *block = (*blocks)[block_index];
     auto offset_in_block = offset % BLOCK_SIZE;
-    auto payload_size = size;
-    if (BLOCK_SIZE <= (offset_in_block + size)) {
-        payload_size = BLOCK_SIZE - offset_in_block;
+    auto block_size = block->size();
+    if (block_size < offset_in_block) {
+        return 0;
     }
-    memcpy(buf, block->data() + (offset_in_block * sizeof(char)), size * sizeof(char));
+    auto payload_size = size;
+    if (block_size <= (offset_in_block + size)) {
+        payload_size = block_size - offset_in_block;
+    }
+    memcpy(buf, block->data() + offset_in_block, payload_size);
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
     LOGGER.info("ramfs_read(" + filename + ") Exiting with " + to_string(payload_size) + " after " + to_string(elapsed.count()) + " microseconds");
