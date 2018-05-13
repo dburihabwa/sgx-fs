@@ -1,5 +1,0 @@
-benchmark "ramfs.bin" "sgx-ramfs.bin"
-"filemicro\\_rread.f" 64.0 59.739999999999995
-"filemicro\\_rwrite.f" 64.0 25.419999999999998
-"filemicro\\_seqread.f" 0.43999999999999995 2.9799999999999995
-"filemicro\\_seqwrite.f" 81.4 31.3
