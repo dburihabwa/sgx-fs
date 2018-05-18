@@ -121,6 +121,68 @@ int ramfs_open(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 
+static sgx_status_t decrypt_block(sgx_sealed_data_t *sealed,
+                                  char *decrypted,
+                                  size_t offset,
+                                  size_t size) {
+  auto payload_size = sealed->aes_data.payload_size;
+  auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
+  uint8_t* buffer = new uint8_t[payload_size];
+
+  sgx_status_t read;
+  ramfs_decrypt(ENCLAVE_ID, &read,
+                "",
+                sealed, sealed_size,
+                buffer, payload_size);
+  switch (read) {
+      case SGX_ERROR_INVALID_PARAMETER:
+          LOGGER.error("[ramfs_read] Invalid parameter");
+          break;
+      case SGX_ERROR_INVALID_CPUSVN:
+          LOGGER.error("[ramfs_read] The CPUSVN in the sealed data blob is beyond the CPUSVN value of the platform.");
+          break;
+      case SGX_ERROR_INVALID_ISVSVN:
+          LOGGER.error(
+                  "[ramfs_read] The ISVSVN in the sealed data blob is greater than the ISVSVN value of the enclave.");
+          break;
+      case SGX_ERROR_MAC_MISMATCH:
+          LOGGER.error(
+                  "[ramfs_read] The tag verification failed during unsealing. The error may be caused by a platform update, software update, or sealed data blob corruption. This error is also reported if other corruption of the sealed data structure is detected.");
+          break;
+      case SGX_ERROR_OUT_OF_MEMORY:
+          LOGGER.error("[ramfs_read] The enclave is out of memory.");
+          break;
+      case SGX_ERROR_UNEXPECTED:
+          LOGGER.error("[ramfs_read] Indicates a cryptography library failure.");
+          break;
+      default:
+          break;
+  }
+  auto size_to_copy = size;
+  if ((size_to_copy + offset) > payload_size) {
+    size_to_copy = payload_size - offset;
+  }
+  memcpy(decrypted + offset, buffer, size_to_copy);
+  delete [] buffer;
+  return (sgx_status_t) size_to_copy;
+}
+
+static int read_data(vector<sgx_sealed_data_t*> *blocks,
+                     char *buffer,
+                     size_t block_index,
+                     size_t offset,
+                     size_t size) {
+  int read = 0;
+  size_t offset_in_block = offset % BLOCK_SIZE;
+  for (size_t index = block_index;
+       index < blocks->size() && read < reinterpret_cast<int> size;
+       index++, offset_in_block = 0) {
+    sgx_sealed_data_t *block = blocks->at(index);
+    read += decrypt_block(block, buffer + read, offset_in_block, BLOCK_SIZE);
+  }
+  return read;
+}
+
 int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
     string filename = clean_path(path);
@@ -140,47 +202,8 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                      ") Exiting because block_index is higher than blocks");
         return 0;
     }
-    sgx_sealed_data_t *block = blocks->data()[block_index];
-
-    auto payload_size = block->aes_data.payload_size;
-    auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
-
-    sgx_status_t read;
-    ramfs_decrypt(ENCLAVE_ID, &read,
-                  filename.c_str(),
-                  block, sealed_size,
-                  (uint8_t *) buf, payload_size);
-    switch (read) {
-        case SGX_ERROR_INVALID_PARAMETER:
-            LOGGER.error("[ramfs_read] Invalid parameter");
-            break;
-        case SGX_ERROR_INVALID_CPUSVN:
-            LOGGER.error("[ramfs_read] The CPUSVN in the sealed data blob is beyond the CPUSVN value of the platform.");
-            break;
-        case SGX_ERROR_INVALID_ISVSVN:
-            LOGGER.error(
-                    "[ramfs_read] The ISVSVN in the sealed data blob is greater than the ISVSVN value of the enclave.");
-            break;
-
-        case SGX_ERROR_MAC_MISMATCH:
-            LOGGER.error(
-                    "[ramfs_read] The tag verification failed during unsealing. The error may be caused by a platform update, software update, or sealed data blob corruption. This error is also reported if other corruption of the sealed data structure is detected.");
-            break;
-
-        case SGX_ERROR_OUT_OF_MEMORY:
-            LOGGER.error("[ramfs_read] The enclave is out of memory.");
-            break;
-
-        case SGX_ERROR_UNEXPECTED:
-            LOGGER.error("[ramfs_read] Indicates a cryptography library failure.");
-            break;
-        default:
-            break;
-    }
-    auto end = chrono::steady_clock::now();
-    auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info(log_line_header + " Exiting with " + to_string(payload_size) + " after " + to_string(elapsed.count()) + " microseconds");
-    return payload_size;
+    auto read = read_data(blocks, buf, block_index, offset, size);
+    return read;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
