@@ -115,6 +115,27 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 
+static int read_data(const vector < vector < char>*>* blocks,
+                     char *buffer,
+                     size_t block_index,
+                     size_t offset,
+                     size_t size) {
+  size_t read = 0;
+  size_t offset_in_block = offset % BLOCK_SIZE;
+  for (size_t index = block_index;
+       index < blocks->size() && read < size;
+       index++, offset_in_block = 0) {
+    vector<char> *block = blocks->at(index);
+    auto size_to_copy = size - read;
+    if (size_to_copy > block->size()) {
+      size_to_copy = block->size();
+    }
+    memcpy(buffer, block->data() + offset_in_block, size_to_copy);
+    read += size_to_copy;
+  }
+  return static_cast<int>(read);
+}
+
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
     string filename = clean_path(path);
@@ -134,21 +155,11 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                      ") Exiting because block_index is higher than blocks");
         return 0;
     }
-    vector<char> *block = (*blocks)[block_index];
-    auto offset_in_block = offset % BLOCK_SIZE;
-    auto block_size = block->size();
-    if (block_size < offset_in_block) {
-        return 0;
-    }
-    auto payload_size = size;
-    if (block_size <= (offset_in_block + size)) {
-        payload_size = block_size - offset_in_block;
-    }
-    memcpy(buf, block->data() + offset_in_block, payload_size);
+    int read = read_data(blocks, buf, block_index, offset, size);
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info(log_line_header + " Exiting with " + to_string(payload_size) + " after " + to_string(elapsed.count()) + " microseconds");
-    return payload_size;
+    LOGGER.info(log_line_header + " Exiting with " + to_string(read) + " after " + to_string(elapsed.count()) + " microseconds");
+    return read;
 }
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
