@@ -165,6 +165,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
     string filename = clean_path(path);
+    const string header = "ramfs_write(" + filename + ", offset=" + to_string(offset) + ", size=" + to_string(size) + ")";
     auto start = chrono::high_resolution_clock::now();
     auto entry = FILES.find(filename);
     if (entry == FILES.end()) {
@@ -174,28 +175,34 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     auto blocks = entry->second;
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
-    auto payload_size = offset_in_block + size;
-    auto space_needed = (payload_size) > BLOCK_SIZE ? BLOCK_SIZE : (payload_size);
-    // Has the block that will host the data already in the list of blocks
+    size_t written = 0;
     if (block_index < blocks->size()) {
         vector<char> *block = (*blocks)[block_index];
-        if (block->size() < space_needed) {
-            block->resize(space_needed);
+        size_t bytes_to_write = size;
+        if (BLOCK_SIZE < (offset_in_block + size)) {
+          bytes_to_write = BLOCK_SIZE - offset_in_block;
+          block->resize(BLOCK_SIZE);
+        } else {
+          block->resize(offset_in_block + size);
         }
-        memcpy(block->data() + offset_in_block, data, size);
-        auto end = chrono::high_resolution_clock::now();
-        auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-        LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size) + " after " + to_string(elapsed.count()) + " microseconds");
-        return size;
+        memcpy(block->data() + offset_in_block, data, bytes_to_write);
+        written += bytes_to_write;
     }
-    // Create a block from scratch
-    vector<char> *block = new vector<char>(space_needed);
-    memcpy(block->data() + offset_in_block, data, size);
-    blocks->push_back(block);
+    // Create new blocks from scratch
+    while (written < size) {
+      size_t bytes_to_write = size - written;
+      if (BLOCK_SIZE < bytes_to_write) {
+        bytes_to_write = BLOCK_SIZE;
+      }
+      vector<char> *block = new vector<char>(bytes_to_write);
+      memcpy(block->data(), data + written, bytes_to_write);
+      blocks->push_back(block);
+      written += bytes_to_write;
+    }
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size) + " after " + to_string(elapsed.count()) + " microseconds");
-    return size;
+    LOGGER.info(header + ": Exiting " + to_string(written) + " after " + to_string(elapsed.count()) + " microseconds");
+    return written;
 }
 
 int ramfs_unlink(const char *pathname) {

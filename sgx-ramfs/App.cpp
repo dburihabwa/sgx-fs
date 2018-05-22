@@ -175,7 +175,7 @@ static int read_data(vector<sgx_sealed_data_t*> *blocks,
   int read = 0;
   size_t offset_in_block = offset % BLOCK_SIZE;
   for (size_t index = block_index;
-       index < blocks->size() && read < reinterpret_cast<int> size;
+       index < blocks->size() && read < (int) size;
        index++, offset_in_block = 0) {
     sgx_sealed_data_t *block = blocks->at(index);
     read += decrypt_block(block, buffer + read, offset_in_block, BLOCK_SIZE);
@@ -218,7 +218,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
-    auto payload_size = offset_in_block + size;
+    size_t payload_size = offset_in_block + size;
     auto max_block = blocks->size() + 1;
     LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (payload_size = " +
                 to_string(payload_size) + ")");
@@ -236,9 +236,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                       filename.c_str(),
                       block, current_sealed_size,
                       plaintext, block->aes_data.payload_size);
-        for (size_t i = 0; i < size; i++) {
-            plaintext[offset_in_block + i] = data[i];
-        }
+        memcpy(plaintext + offset_in_block, data, payload_size);
         free(block);
         block = (sgx_sealed_data_t *) malloc(new_sealed_size);
         ramfs_encrypt(ENCLAVE_ID,
@@ -252,25 +250,21 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
         return size;
     }
     uint8_t *plaintext = new uint8_t[payload_size];
-    auto sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
-    auto block = (sgx_sealed_data_t *) malloc(sealed_size);
+    size_t sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
+    auto *block = (sgx_sealed_data_t *) calloc(sealed_size, sizeof(char));
     LOGGER.info("ramfs_write(" + filename + ") Writing to block at " + convert_pointer_to_string(block));
-
-    for (size_t i = 0; i < size; i++) {
-        plaintext[offset_in_block + i] = data[i];
-    }
-    LOGGER.info("ramfs_write(" + filename + ") Payload size in the block " + to_string(block->aes_data.payload_size));
+    memcpy(plaintext + offset_in_block, data, payload_size);
     sgx_status_t ret;
     sgx_status_t status = ramfs_encrypt(ENCLAVE_ID,
                                         &ret,
                                         filename.c_str(),
                                         plaintext, payload_size,
                                         block, sealed_size);
-    LOGGER.info("ramfs_write(" + filename + ") Payload size in the block " + to_string(block->aes_data.payload_size));
+    LOGGER.info("ramfs_write(" + filename + ") Encrypted payload size in the block " + to_string(block->aes_data.payload_size));
     blocks->push_back(block);
     delete[] plaintext;
-    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
-    return size;
+    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(payload_size));
+    return payload_size;
 }
 
 int ramfs_unlink(const char *pathname) {
