@@ -130,7 +130,7 @@ static int read_data(const vector < vector < char>*>* blocks,
     if (size_to_copy > block->size()) {
       size_to_copy = block->size();
     }
-    memcpy(buffer, block->data() + offset_in_block, size_to_copy);
+    memcpy(buffer + read, block->data() + offset_in_block, size_to_copy);
     read += size_to_copy;
   }
   return static_cast<int>(read);
