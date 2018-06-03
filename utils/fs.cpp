@@ -1,5 +1,6 @@
 #include <climits>
 #include <string>
+#include <vector>
 
 #include "fs.hpp"
 
@@ -81,4 +82,26 @@ bool is_in_directory(const string &directory, const string &file) {
         return false;
     }
     return true;
+}
+
+vector<string>* split_path(const string &path) {
+  vector<string>* tokens = new vector<string>();
+  string trimmed_path = clean_path(path);
+  while (trimmed_path.length() > 0) {
+    size_t start = 0, pos = 0;
+    pos = trimmed_path.find("/", start);
+    if (pos == string::npos) {
+      tokens->push_back(trimmed_path.substr(start, trimmed_path.length()));
+      break;
+    }
+    size_t length = pos - start;
+    if (length > 0) {
+      string token = trimmed_path.substr(start, length);
+      if (token.length() > 0) {
+        tokens->push_back(token);
+      }
+    }
+    trimmed_path = clean_path(trimmed_path.substr(pos + 1, string::npos));
+  }
+  return tokens;
 }

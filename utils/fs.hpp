@@ -7,6 +7,7 @@
 
 #include <string>
 #include <stdexcept>
+#include <vector>
 
 using namespace std;
 
@@ -70,6 +71,14 @@ string get_directory(const string &path);
  * @return True if the file is directly located in the directory. False otherwise
  */
 bool is_in_directory(const string &directory, const string &path);
+
+/**
+ * Splits a path on / symbol.
+ * Returns a vector that needs to be deleted by the caller
+ * @param path Path to the file
+ * @return A vector containing the parts
+ */
+vector<string>* split_path(const string &path);
 
 
 #endif //FUSEGX_FS_H

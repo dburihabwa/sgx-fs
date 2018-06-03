@@ -173,6 +173,9 @@ fs.o: utils/fs.cpp
 logging.o: utils/logging.cpp
 	g++ $< -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
+serialization.o: utils/serialization.cpp
+	g++ $< -std=c++11 -c -Wall -Wextra -pedantic -o $@
+
 
 ######## Ramfs ########
 ramfs.o: ramfs/App.cpp
