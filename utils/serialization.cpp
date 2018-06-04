@@ -1,9 +1,12 @@
 #include "serialization.hpp"
 
+#include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <cstring>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <stdexcept>
@@ -62,17 +65,72 @@ void dump_map(const std::map<std::string, std::vector < std::vector < char>*>*> 
   }
 }
 
-size_t restore(const std::string &path, char *buffer) {
+size_t restore(const std::string &path, char* buffer) {
   std::ifstream stream;
-  stream.open(path);
-  stream.seekg(stream.end);
+  stream.open(path, std::ios::binary);
+  stream.seekg(0, std::ios::end);
   size_t size = stream.tellg();
   stream.seekg(stream.beg);
   if (buffer != NULL) {
-    delete [] buffer;
+    delete[] buffer;
   }
   buffer = new char[size];
   stream.read(buffer, size);
   stream.close();
+  cout << "restore(" << path << ") = "<< buffer << endl;
   return size;
+}
+
+static vector<string>* list_files(const std::string &path) {
+  std::vector<string>* files = new std::vector<string>();
+  DIR* directory = opendir(path.c_str());
+  struct dirent* entry;
+  while ((entry = readdir(directory)) != NULL) {
+    string entry_name(entry->d_name);
+    if (entry_name.compare(".") == 0 || entry_name.compare("..") == 0) {
+      continue;
+    }
+    if (entry->d_type == DT_DIR) {
+      std::string directory_name = path + "/" + entry_name;
+      std::vector<string>* files_in_dir = list_files(directory_name);
+      files->insert(files->end(), files_in_dir->begin(), files_in_dir->end());
+      delete files_in_dir;
+    } else {
+      std::string filename = path + "/" + entry_name;
+      files->push_back(filename);
+    }
+  }
+  return files;
+}
+
+std::map<std::string, vector<vector<char>*>*>* restore_map(const std::string &path) {
+  if (!is_a_directory(path)) {
+    throw new runtime_error(path + " is not a directory!");
+  }
+  const size_t BLOCK_SIZE = 4096;
+  auto files = new std::map<std::string, vector<vector<char>*>*>();
+  auto filenames = list_files(path);
+  for (auto it = filenames->begin(); it != filenames->end(); it++) {
+    string filename = (*it);
+    std::ifstream stream;
+    stream.open(filename, std::ios::binary);
+    stream.seekg(0, std::ios::end);
+    size_t restored = stream.tellg();
+    stream.seekg(stream.beg);
+    char* buffer = new char[restored];
+    stream.read(buffer, restored);
+    stream.close();
+    auto blocks = new vector<vector<char>*>();
+    for (size_t offset = 0; offset < restored; offset += BLOCK_SIZE) {
+      size_t bytes_to_copy = restored - offset;
+      if (bytes_to_copy > BLOCK_SIZE) {
+        bytes_to_copy = BLOCK_SIZE;
+      }
+      auto block = new std::vector<char>(buffer, buffer + offset + bytes_to_copy);
+      blocks->push_back(block);
+    }
+    delete [] buffer;
+    (*files)[filename] = blocks;
+  }
+  return files;
 }
