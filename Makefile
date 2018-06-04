@@ -181,7 +181,7 @@ serialization.o: utils/serialization.cpp
 ramfs.o: ramfs/App.cpp
 	g++ $< -std=c++11 -c -Wextra -Wunused-but-set-variable -Wunused-function -fPIC -Wno-attributes $(shell pkg-config fuse --cflags) -g -o $@
 
-ramfs.bin: ramfs.o fs.o logging.o
+ramfs.bin: ramfs.o fs.o logging.o serialization.o
 	g++ $^ -o $@ -lpthread $(shell pkg-config fuse --libs)
 
 

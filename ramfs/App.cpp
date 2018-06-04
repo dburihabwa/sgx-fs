@@ -27,11 +27,11 @@ using namespace std;
 
 #include "../utils/fs.hpp"
 #include "../utils/logging.h"
+#include "../utils/serialization.hpp"
 
 static const size_t BLOCK_SIZE = 4096;
 
-static map<string, vector < vector < char>*>*>
-FILES;
+static map<string, vector < vector < char>*>*> *FILES;
 static map<string, bool> DIRECTORIES;
 
 static Logger LOGGER("./ramfs.log");
@@ -64,8 +64,8 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
         return 0;
     }
 
-    if (FILES.find(filename) != FILES.end()) {
-        auto entry = FILES.find(filename);
+    if (FILES->find(filename) != FILES->end()) {
+        auto entry = FILES->find(filename);
         auto blocks = entry->second;
         stbuf->st_size = compute_file_size(blocks);
         stbuf->st_mode = S_IFREG | 0777;
@@ -79,7 +79,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
     string pathname = clean_path(path);
-    if (FILES.find(pathname) != FILES.end()) {
+    if (FILES->find(pathname) != FILES->end()) {
         return -ENOTDIR;
     }
     if (!pathname.empty() && DIRECTORIES.find(pathname) == DIRECTORIES.end()) {
@@ -93,7 +93,7 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
             entries.push_back(get_relative_path(pathname, it->first));
         }
     }
-    for (auto it = FILES.begin(); it != FILES.end(); it++) {
+    for (auto it = FILES->begin(); it != FILES->end(); it++) {
         if (is_in_directory(pathname, it->first)) {
             entries.push_back(get_relative_path(pathname, it->first));
         }
@@ -107,7 +107,7 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
-    if (FILES.find(filename) == FILES.end()) {
+    if (FILES->find(filename) == FILES->end()) {
         LOGGER.error("ramfs_open(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -143,8 +143,8 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                               ", offset=" + to_string(offset) + \
                               ", size=" + to_string(size) + ")";
     auto start = chrono::high_resolution_clock::now();
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
           LOGGER.error(log_line_header + "): Not found");
         return -ENOENT;
     }
@@ -167,8 +167,8 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     string filename = clean_path(path);
     const string header = "ramfs_write(" + filename + ", offset=" + to_string(offset) + ", size=" + to_string(size) + ")";
     auto start = chrono::high_resolution_clock::now();
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -207,8 +207,8 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 
 int ramfs_unlink(const char *pathname) {
     string filename = clean_path(pathname);
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         return -ENOENT;
     }
     auto blocks = entry->second;
@@ -218,7 +218,7 @@ int ramfs_unlink(const char *pathname) {
     }
     blocks->clear();
     delete blocks;
-    FILES.erase(filename);
+    FILES->erase(filename);
     return 0;
 }
 
@@ -226,7 +226,7 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     string filename = clean_path(path);
     LOGGER.info("ramfs_create(" + filename + ") Entering");
 
-    if (FILES.find(filename) != FILES.end()) {
+    if (FILES->find(filename) != FILES->end()) {
         LOGGER.error("ramfs_create(" + filename + "): Already exists");
         return -EEXIST;
     }
@@ -235,10 +235,10 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
         LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
-    FILES[filename] = new vector < vector < char > * > ();
+    (*FILES)[filename] = new vector < vector < char > * > ();
     LOGGER.info(
             "ramfs_create(" + filename + ") Added new empty vector at address " +
-            convert_pointer_to_string(FILES[filename]));
+            convert_pointer_to_string((*FILES)[filename]));
     LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
@@ -261,8 +261,8 @@ int ramfs_truncate(const char *path, off_t length) {
     LOGGER.info("[ramfs_truncate]" + filename);
     auto len = static_cast<unsigned int>(length);
 
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         LOGGER.error("ramfs_truncate(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -335,8 +335,8 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
     if (existing_directory != DIRECTORIES.end()) {
         return 0;
     }
-    auto existing_file = FILES.find(path);
-    if (existing_file != FILES.end()) {
+    auto existing_file = FILES->find(path);
+    if (existing_file != FILES->end()) {
         LOGGER.error("A file with the name " + path + " already exists!");
         return -1;
     }
@@ -349,11 +349,11 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
 
 int ramfs_rmdir(const char *path) {
     string directory = clean_path(path);
-    if (FILES.find(directory) != FILES.end()) {
+    if (FILES->find(directory) != FILES->end()) {
         errno = ENOTDIR;
         return -1;
     }
-    if (FILES.lower_bound(directory) != FILES.end()) {
+    if (FILES->lower_bound(directory) != FILES->end()) {
         errno = ENOTEMPTY;
         return -1;
     }
@@ -423,10 +423,28 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
     return 0;
 }
 
+void* init(struct fuse_conn_info *conn) {
+  FILES = restore_map("ramfs_dump");
+  for (auto it = FILES->begin(); it != FILES->end(); it++) {
+    string filename = it->first;
+    vector<string>* tokens = split_path(filename);
+    string directory_name;
+    for (size_t i = 0; i < tokens->size() - 1; i++) {
+      directory_name += tokens->at(i) + "/";
+      ramfs_mkdir(directory_name.c_str(), 0777);
+    }
+    delete tokens;
+  }
+  return FILES;
+}
+
+void destroy(void* unused_private_data) {
+  dump_map((*FILES), "ramfs_dump");
+}
+
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
-
     ramfs_oper.getattr = ramfs_getattr;
     ramfs_oper.readdir = ramfs_readdir;
     ramfs_oper.open = ramfs_open;
@@ -454,6 +472,9 @@ int main(int argc, char **argv) {
     ramfs_oper.flush = ramfs_flush;
     ramfs_oper.release = ramfs_release;
     ramfs_oper.fsync = ramfs_fsync;
+
+    ramfs_oper.init = init;
+    ramfs_oper.destroy = destroy;
 
     return fuse_main(argc, argv, &ramfs_oper, NULL);
 }
