@@ -126,7 +126,7 @@ std::map<std::string, vector<vector<char>*>*>* restore_map(const std::string &pa
       if (bytes_to_copy > BLOCK_SIZE) {
         bytes_to_copy = BLOCK_SIZE;
       }
-      auto block = new std::vector<char>(buffer, buffer + offset + bytes_to_copy);
+      auto block = new std::vector<char>(buffer + offset, buffer + offset + bytes_to_copy);
       blocks->push_back(block);
     }
     delete [] buffer;
