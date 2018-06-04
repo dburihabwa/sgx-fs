@@ -130,6 +130,7 @@ std::map<std::string, vector<vector<char>*>*>* restore_map(const std::string &pa
       blocks->push_back(block);
     }
     delete [] buffer;
+    filename = clean_path(filename.substr(path.length(), string::npos));
     (*files)[filename] = blocks;
   }
   return files;
