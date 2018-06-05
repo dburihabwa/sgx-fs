@@ -3,37 +3,38 @@
  * https://github.com/pfisterer/fuse-ramfs
  */
 
+
+#define FUSE_USE_VERSION 26
+
+#include <fcntl.h>
+#include <fuse.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <cassert>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
-#include <chrono>
 #include <iostream>
 #include <map>
 #include <string>
-#include <sys/types.h>
-#include <unistd.h>
 #include <vector>
 
-
-#define FUSE_USE_VERSION 26
-
-#include <fcntl.h>
-#include <fuse.h>
-
-using namespace std;
 
 #include "Enclave_u.h"
 #include "sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
 #include "../utils/fs.hpp"
 #include "../utils/logging.h"
+#include "../utils/serialization.hpp"
+
+using namespace std;
 
 static const size_t BLOCK_SIZE = 4096;
 
-static map<string, vector < sgx_sealed_data_t * >*> FILES;
+static map<string, vector < sgx_sealed_data_t * >*>* FILES;
 static map<string, bool> DIRECTORIES;
 
 sgx_enclave_id_t ENCLAVE_ID;
@@ -41,10 +42,14 @@ sgx_enclave_id_t ENCLAVE_ID;
 static Logger LOGGER("./sgx-ramfs.log");
 
 
-static size_t compute_file_size(vector<sgx_sealed_data_t *> *data) {
+static size_t compute_file_size(vector<sgx_sealed_data_t *>* data) {
     size_t size = 0;
+    size_t counter = 0;
+    cout << "Sealed blocks " << convert_pointer_to_string(data) << endl;
     for (auto it = data->begin(); it != data->end(); it++) {
-        size += (*it)->aes_data.payload_size;
+        sgx_sealed_data_t* block = (*it);
+        cout << "Looking at block " << counter++ << "(" << convert_pointer_to_string(block) << ")" << endl;
+        size += block->aes_data.payload_size;
     }
     return size;
 }
@@ -69,9 +74,8 @@ int ramfs_getattr(const char *path, struct stat *stbuf) {
 
         return 0;
     }
-
-    if (FILES.find(filename) != FILES.end()) {
-        auto entry = FILES.find(filename);
+    auto entry = FILES->find(filename);
+    if (entry != FILES->end()) {
         auto blocks = entry->second;
         stbuf->st_size = compute_file_size(blocks);
         stbuf->st_mode = S_IFREG | 0777;
@@ -85,7 +89,7 @@ int ramfs_getattr(const char *path, struct stat *stbuf) {
 int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
     string pathname = clean_path(path);
-    if (FILES.find(pathname) != FILES.end()) {
+    if (FILES->find(pathname) != FILES->end()) {
         return -ENOTDIR;
     }
     if (!pathname.empty() && DIRECTORIES.find(pathname) == DIRECTORIES.end()) {
@@ -99,7 +103,7 @@ int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
             entries.push_back(get_relative_path(pathname, it->first));
         }
     }
-    for (auto it = FILES.begin(); it != FILES.end(); it++) {
+    for (auto it = FILES->begin(); it != FILES->end(); it++) {
         if (is_in_directory(pathname, it->first)) {
             entries.push_back(get_relative_path(pathname, it->first));
         }
@@ -113,7 +117,7 @@ int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
-    if (FILES.find(filename) == FILES.end()) {
+    if (FILES->find(filename) == FILES->end()) {
         LOGGER.error("ramfs_open(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -189,9 +193,8 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     string log_line_header = "ramfs_read(" + filename + \
                               ", offset=" + to_string(offset) + \
                               ", size=" + to_string(size) + ")";
-    auto start = chrono::steady_clock::now();
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         LOGGER.error(log_line_header + "): Not found");
         return -ENOENT;
     }
@@ -209,8 +212,8 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
     string filename = clean_path(path);
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -244,7 +247,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                       filename.c_str(),
                       plaintext, new_payload_size,
                       block, new_sealed_size);
-        (*FILES[filename])[block_index] = block;
+        (*(*FILES)[filename])[block_index] = block;
         delete[] plaintext;
         LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
         return size;
@@ -269,8 +272,8 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
 
 int ramfs_unlink(const char *pathname) {
     string filename = clean_path(pathname);
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         return -ENOENT;
     }
     auto blocks = entry->second;
@@ -280,7 +283,7 @@ int ramfs_unlink(const char *pathname) {
     }
     blocks->clear();
     delete blocks;
-    FILES.erase(filename);
+    FILES->erase(filename);
     return 0;
 }
 
@@ -288,7 +291,7 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     string filename = clean_path(path);
     LOGGER.info("ramfs_create(" + filename + ") Entering");
 
-    if (FILES.find(filename) != FILES.end()) {
+    if (FILES->find(filename) != FILES->end()) {
         LOGGER.error("ramfs_create(" + filename + "): Already exists");
         return -EEXIST;
     }
@@ -297,9 +300,9 @@ int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
         LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
-    FILES[filename] = new vector<sgx_sealed_data_t *>();
+    (*FILES)[filename] = new vector<sgx_sealed_data_t *>();
     LOGGER.info(
-            "ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string(FILES[filename]));
+            "ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string((*FILES)[filename]));
     LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
@@ -322,8 +325,8 @@ int ramfs_truncate(const char *path, off_t length) {
     LOGGER.info("[ramfs_truncate]" + filename);
     auto len = static_cast<unsigned int>(length);
 
-    auto entry = FILES.find(filename);
-    if (entry == FILES.end()) {
+    auto entry = FILES->find(filename);
+    if (entry == FILES->end()) {
         LOGGER.error("ramfs_truncate(" + filename + "): Not found");
         return -ENOENT;
     }
@@ -429,8 +432,8 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
     if (existing_directory != DIRECTORIES.end()) {
         return 0;
     }
-    auto existing_file = FILES.find(path);
-    if (existing_file != FILES.end()) {
+    auto existing_file = FILES->find(path);
+    if (existing_file != FILES->end()) {
         LOGGER.error("A file with the name " + path + " already exists!");
         return -1;
     }
@@ -443,11 +446,11 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
 
 int ramfs_rmdir(const char *path) {
     string directory = clean_path(path);
-    if (FILES.find(directory) != FILES.end()) {
+    if (FILES->find(directory) != FILES->end()) {
         errno = ENOTDIR;
         return -1;
     }
-    if (FILES.lower_bound(directory) != FILES.end()) {
+    if (FILES->lower_bound(directory) != FILES->end()) {
         errno = ENOTEMPTY;
         return -1;
     }
@@ -505,11 +508,6 @@ int ramfs_setxattr(const char *, const char *, const char *, size_t, int) {
     return -EINVAL;
 }
 
-void destroy(void *private_data) {
-    //TODO Dump sealed metadata
-    sgx_destroy_enclave(ENCLAVE_ID);
-}
-
 int ramfs_flush(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
@@ -522,6 +520,26 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
     return 0;
 }
 
+void* init(struct fuse_conn_info *conn) {
+  FILES = restore_sgx_map("sgx_ramfs_dump");
+  for (auto it = FILES->begin(); it != FILES->end(); it++) {
+    string filename = it->first;
+    vector<string>* tokens = split_path(filename);
+    string directory_name;
+    for (size_t i = 0; i < tokens->size() - 1; i++) {
+      directory_name += tokens->at(i) + "/";
+      ramfs_mkdir(directory_name.c_str(), 0777);
+    }
+    delete tokens;
+  }
+  return FILES;
+}
+
+void destroy(void* unused_private_data) {
+  dump_sgx_map((*FILES), "sgx_ramfs_dump");
+  sgx_destroy_enclave(ENCLAVE_ID);
+}
+
 static struct fuse_operations ramfs_oper;
 
 int main(int argc, char **argv) {
@@ -532,8 +550,7 @@ int main(int argc, char **argv) {
     cout << path_to_enclave_so << endl;
     if (initialize_enclave(&ENCLAVE_ID,
                            path_to_enclave_token,
-                           path_to_enclave_so) < 0)
-    {
+                           path_to_enclave_so) < 0) {
         LOGGER.error("Fail to initialize enclave.");
         exit(1);
     }
@@ -562,10 +579,12 @@ int main(int argc, char **argv) {
     ramfs_oper.fgetattr = ramfs_fgetattr;
     ramfs_oper.utimens = ramfs_utimens;
     ramfs_oper.bmap = ramfs_bmap;
-    ramfs_oper.destroy = destroy;
     ramfs_oper.flush = ramfs_flush;
     ramfs_oper.release = ramfs_release;
     ramfs_oper.fsync = ramfs_fsync;
+
+    ramfs_oper.init = init;
+    ramfs_oper.destroy = destroy;
 
     return fuse_main(argc, argv, &ramfs_oper, NULL);
 }

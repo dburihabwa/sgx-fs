@@ -174,12 +174,12 @@ logging.o: utils/logging.cpp
 	g++ $< -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
 serialization.o: utils/serialization.cpp
-	g++ $< -std=c++11 -c -Wall -Wextra -pedantic -o $@
+	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
 
 ######## Ramfs ########
 ramfs.o: ramfs/App.cpp
-	g++ $< -std=c++11 -c -Wextra -Wunused-but-set-variable -Wunused-function -fPIC -Wno-attributes $(shell pkg-config fuse --cflags) -g -o $@
+	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wextra -Wunused-but-set-variable -Wunused-function -fPIC -Wno-attributes $(shell pkg-config fuse --cflags) -g -o $@
 
 ramfs.bin: ramfs.o fs.o logging.o serialization.o
 	g++ $^ -o $@ -lpthread $(shell pkg-config fuse --libs)
@@ -199,7 +199,7 @@ sgx-ramfs/%.o: sgx-ramfs/%.cpp
 	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-$(App_Name): sgx-ramfs/Enclave_u.o $(App_Cpp_Objects) fs.o logging.o
+$(App_Name): sgx-ramfs/Enclave_u.o $(App_Cpp_Objects) fs.o logging.o serialization.o
 	@$(CXX) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
@@ -229,4 +229,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o ramfs.bin
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o ramfs.bin serialization.o
