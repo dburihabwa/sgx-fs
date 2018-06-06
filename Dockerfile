@@ -17,4 +17,4 @@ RUN cd /opt/linux-sgx/linux/installer/bin &&\
 COPY . /opt/sfusegx/
 WORKDIR /opt/sfusegx
 RUN /bin/bash -c "source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment" make SGX_MODE=HW DEBUG=1 SGX_PRERELEASE=1 &&\
-    make ramfs.bin
+    mkdir -p /tmp/mnt/ramfs /tmp/mnt/sgx-ramfs
