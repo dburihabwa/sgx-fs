@@ -48,7 +48,6 @@ static size_t compute_file_size(vector<sgx_sealed_data_t *>* data) {
     cout << "Sealed blocks " << convert_pointer_to_string(data) << endl;
     for (auto it = data->begin(); it != data->end(); it++) {
         sgx_sealed_data_t* block = (*it);
-        cout << "Looking at block " << counter++ << "(" << convert_pointer_to_string(block) << ")" << endl;
         size += block->aes_data.payload_size;
     }
     return size;
@@ -82,7 +81,7 @@ int ramfs_getattr(const char *path, struct stat *stbuf) {
         stbuf->st_nlink = 1;
         return 0;
     }
-    LOGGER.error("ramfs_getattr(" + filename + "): Could not find entry");
+    //LOGGER.error("ramfs_getattr(" + filename + "): Could not find entry");
     return -ENOENT;
 }
 
@@ -118,7 +117,7 @@ int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
     if (FILES->find(filename) == FILES->end()) {
-        LOGGER.error("ramfs_open(" + filename + "): Not found");
+        //LOGGER.error("ramfs_open(" + filename + "): Not found");
         return -ENOENT;
     }
 
@@ -140,24 +139,22 @@ static sgx_status_t decrypt_block(sgx_sealed_data_t *sealed,
                 buffer, payload_size);
   switch (read) {
       case SGX_ERROR_INVALID_PARAMETER:
-          LOGGER.error("[ramfs_read] Invalid parameter");
+          //LOGGER.error("[ramfs_read] Invalid parameter");
           break;
       case SGX_ERROR_INVALID_CPUSVN:
-          LOGGER.error("[ramfs_read] The CPUSVN in the sealed data blob is beyond the CPUSVN value of the platform.");
+          //LOGGER.error("[ramfs_read] The CPUSVN in the sealed data blob is beyond the CPUSVN value of the platform.");
           break;
       case SGX_ERROR_INVALID_ISVSVN:
-          LOGGER.error(
-                  "[ramfs_read] The ISVSVN in the sealed data blob is greater than the ISVSVN value of the enclave.");
+          //LOGGER.error( "[ramfs_read] The ISVSVN in the sealed data blob is greater than the ISVSVN value of the enclave.");
           break;
       case SGX_ERROR_MAC_MISMATCH:
-          LOGGER.error(
-                  "[ramfs_read] The tag verification failed during unsealing. The error may be caused by a platform update, software update, or sealed data blob corruption. This error is also reported if other corruption of the sealed data structure is detected.");
+          //LOGGER.error( "[ramfs_read] The tag verification failed during unsealing. The error may be caused by a platform update, software update, or sealed data blob corruption. This error is also reported if other corruption of the sealed data structure is detected.");
           break;
       case SGX_ERROR_OUT_OF_MEMORY:
-          LOGGER.error("[ramfs_read] The enclave is out of memory.");
+          //LOGGER.error("[ramfs_read] The enclave is out of memory.");
           break;
       case SGX_ERROR_UNEXPECTED:
-          LOGGER.error("[ramfs_read] Indicates a cryptography library failure.");
+          //LOGGER.error("[ramfs_read] Indicates a cryptography library failure.");
           break;
       default:
           break;
@@ -195,13 +192,13 @@ int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                               ", size=" + to_string(size) + ")";
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-        LOGGER.error(log_line_header + "): Not found");
+        //LOGGER.error(log_line_header + "): Not found");
         return -ENOENT;
     }
     auto blocks = entry->second;
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     if (blocks->size() <= block_index) {
-        LOGGER.error(log_line_header + \
+        //LOGGER.error(log_line_header + \
                      ") Exiting because block_index is higher than blocks");
         return 0;
     }
@@ -214,20 +211,19 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     string filename = clean_path(path);
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-        LOGGER.error("ramfs_write(" + filename + "): Not found");
+        //LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
     auto blocks = entry->second;
-    LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(blocks));
+    //LOGGER.info("ramfs_write(" + filename + ") Modifying block vector " + convert_pointer_to_string(blocks));
     auto block_index = size_t(floor(offset / BLOCK_SIZE));
     auto offset_in_block = offset % BLOCK_SIZE;
     size_t payload_size = offset_in_block + size;
     auto max_block = blocks->size() + 1;
-    LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (payload_size = " +
-                to_string(payload_size) + ")");
+    //LOGGER.info("ramfs_write(" + filename + ") Writing to block " + to_string(block_index) + " (payload_size = " + to_string(payload_size) + ")");
     if (block_index < blocks->size()) {
         sgx_sealed_data_t *block = blocks->data()[block_index];
-        LOGGER.info("ramfs_write(" + filename + ") Modifying block " + convert_pointer_to_string(block));
+        //LOGGER.info("ramfs_write(" + filename + ") Modifying block " + convert_pointer_to_string(block));
         auto current_payload_size = block->aes_data.payload_size;
         auto current_sealed_size = sizeof(sgx_sealed_data_t) + block->aes_data.payload_size;
         auto new_payload_size = (payload_size > current_payload_size) ? payload_size : current_payload_size;
@@ -249,13 +245,13 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                       block, new_sealed_size);
         (*(*FILES)[filename])[block_index] = block;
         delete[] plaintext;
-        LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
+        //LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(size));
         return size;
     }
     uint8_t *plaintext = new uint8_t[payload_size];
     size_t sealed_size = sizeof(sgx_sealed_data_t) + payload_size;
     auto *block = (sgx_sealed_data_t *) calloc(sealed_size, sizeof(char));
-    LOGGER.info("ramfs_write(" + filename + ") Writing to block at " + convert_pointer_to_string(block));
+    //LOGGER.info("ramfs_write(" + filename + ") Writing to block at " + convert_pointer_to_string(block));
     memcpy(plaintext + offset_in_block, data, payload_size);
     sgx_status_t ret;
     sgx_status_t status = ramfs_encrypt(ENCLAVE_ID,
@@ -263,10 +259,10 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                                         filename.c_str(),
                                         plaintext, payload_size,
                                         block, sealed_size);
-    LOGGER.info("ramfs_write(" + filename + ") Encrypted payload size in the block " + to_string(block->aes_data.payload_size));
+    //LOGGER.info("ramfs_write(" + filename + ") Encrypted payload size in the block " + to_string(block->aes_data.payload_size));
     blocks->push_back(block);
     delete[] plaintext;
-    LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(payload_size));
+    //LOGGER.info("ramfs_write(" + filename + "): Exiting " + to_string(payload_size));
     return payload_size;
 }
 
@@ -289,21 +285,20 @@ int ramfs_unlink(const char *pathname) {
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     string filename = clean_path(path);
-    LOGGER.info("ramfs_create(" + filename + ") Entering");
+    //LOGGER.info("ramfs_create(" + filename + ") Entering");
 
     if (FILES->find(filename) != FILES->end()) {
-        LOGGER.error("ramfs_create(" + filename + "): Already exists");
+        //LOGGER.error("ramfs_create(" + filename + "): Already exists");
         return -EEXIST;
     }
 
     if ((mode & S_IFREG) == 0) {
-        LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
+        //LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
     (*FILES)[filename] = new vector<sgx_sealed_data_t *>();
-    LOGGER.info(
-            "ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string((*FILES)[filename]));
-    LOGGER.info("ramfs_create(" + filename + ") Exiting");
+    //LOGGER.info("ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string((*FILES)[filename]));
+    //LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
 
@@ -322,25 +317,25 @@ int ramfs_access(const char *path, int) {
 
 int ramfs_truncate(const char *path, off_t length) {
     string filename = clean_path(path);
-    LOGGER.info("[ramfs_truncate]" + filename);
+    //LOGGER.info("[ramfs_truncate]" + filename);
     auto len = static_cast<unsigned int>(length);
 
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-        LOGGER.error("ramfs_truncate(" + filename + "): Not found");
+        //LOGGER.error("ramfs_truncate(" + filename + "): Not found");
         return -ENOENT;
     }
 
     auto blocks = entry->second;
     auto file_size = compute_file_size(blocks);
 
-    LOGGER.info("[ramfs_truncate] file size = " + to_string(file_size) + ", length = " + to_string(len));
+    //LOGGER.info("[ramfs_truncate] file size = " + to_string(file_size) + ", length = " + to_string(len));
 
     if (file_size == len) {
         return 0;
     }
 
-    LOGGER.info("[ramfs_truncate] POUET");
+    //LOGGER.info("[ramfs_truncate] POUET");
 
 
     if (file_size <= len) {
@@ -379,19 +374,19 @@ int ramfs_truncate(const char *path, off_t length) {
             delete[] dummy_text;
         }
 
-        LOGGER.info("[ramfs_truncate] exiting");
+        //LOGGER.info("[ramfs_truncate] exiting");
         return 0;
     }
 
 
     auto blocks_to_keep = static_cast<unsigned int>(int(ceil(len / BLOCK_SIZE)));
-    LOGGER.info("[ramfs_truncate] Keeping " + to_string(blocks_to_keep) + " blocks");
+    //LOGGER.info("[ramfs_truncate] Keeping " + to_string(blocks_to_keep) + " blocks");
     while (blocks_to_keep < blocks->size()) {
         free(blocks->back());
         blocks->pop_back();
     }
     //blocks.erase(blocks.begin() + blocks_to_keep, blocks.end());
-    LOGGER.info("[ramfs_truncate] " + to_string(blocks->size()) + " blocks left");
+    //LOGGER.info("[ramfs_truncate] " + to_string(blocks->size()) + " blocks left");
     if (blocks->empty()) {
         return 0;
     }
@@ -413,7 +408,7 @@ int ramfs_truncate(const char *path, off_t length) {
                   plaintext, bytes_to_keep,
                   block_to_trim, sizeof(sgx_sealed_data_t) + bytes_to_keep);
     delete[] plaintext;
-    LOGGER.info("[ramfs_truncate] exiting");
+    //LOGGER.info("[ramfs_truncate] exiting");
 
     return 0;
 }
@@ -434,7 +429,7 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
     }
     auto existing_file = FILES->find(path);
     if (existing_file != FILES->end()) {
-        LOGGER.error("A file with the name " + path + " already exists!");
+        //LOGGER.error("A file with the name " + path + " already exists!");
         return -1;
     }
     if (path[path.length() - 1] == '/') {
@@ -551,7 +546,7 @@ int main(int argc, char **argv) {
     if (initialize_enclave(&ENCLAVE_ID,
                            path_to_enclave_token,
                            path_to_enclave_so) < 0) {
-        LOGGER.error("Fail to initialize enclave.");
+        //LOGGER.error("Fail to initialize enclave.");
         exit(1);
     }
 

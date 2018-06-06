@@ -72,7 +72,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
         stbuf->st_nlink = 1;
         return 0;
     }
-    LOGGER.error("ramfs_getattr(" + filename + "): Could not find entry");
+    //LOGGER.error("ramfs_getattr(" + filename + "): Could not find entry");
     return -ENOENT;
 }
 
@@ -108,7 +108,7 @@ static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 static int ramfs_open(const char *path, struct fuse_file_info *fi) {
     string filename = clean_path(path);
     if (FILES->find(filename) == FILES->end()) {
-        LOGGER.error("ramfs_open(" + filename + "): Not found");
+        //LOGGER.error("ramfs_open(" + filename + "): Not found");
         return -ENOENT;
     }
 
@@ -145,20 +145,20 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
     auto start = chrono::high_resolution_clock::now();
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-          LOGGER.error(log_line_header + "): Not found");
+          //LOGGER.error(log_line_header + "): Not found");
         return -ENOENT;
     }
     auto blocks = entry->second;
     size_t block_index = offset / BLOCK_SIZE;
     if (blocks->size() <= block_index) {
-        LOGGER.error(log_line_header + \
+        //LOGGER.error(log_line_header + \
                      ") Exiting because block_index is higher than blocks");
         return 0;
     }
     int read = read_data(blocks, buf, block_index, offset, size);
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info(log_line_header + " Exiting with " + to_string(read) + " after " + to_string(elapsed.count()) + " microseconds");
+    //LOGGER.info(log_line_header + " Exiting with " + to_string(read) + " after " + to_string(elapsed.count()) + " microseconds");
     return read;
 }
 
@@ -169,7 +169,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     auto start = chrono::high_resolution_clock::now();
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-        LOGGER.error("ramfs_write(" + filename + "): Not found");
+        //LOGGER.error("ramfs_write(" + filename + "): Not found");
         return -ENOENT;
     }
     auto blocks = entry->second;
@@ -201,7 +201,7 @@ int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
     }
     auto end = chrono::high_resolution_clock::now();
     auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
-    LOGGER.info(header + ": Exiting " + to_string(written) + " after " + to_string(elapsed.count()) + " microseconds");
+    //LOGGER.info(header + ": Exiting " + to_string(written) + " after " + to_string(elapsed.count()) + " microseconds");
     return written;
 }
 
@@ -224,22 +224,20 @@ int ramfs_unlink(const char *pathname) {
 
 int ramfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
     string filename = clean_path(path);
-    LOGGER.info("ramfs_create(" + filename + ") Entering");
+    //LOGGER.info("ramfs_create(" + filename + ") Entering");
 
     if (FILES->find(filename) != FILES->end()) {
-        LOGGER.error("ramfs_create(" + filename + "): Already exists");
+        //LOGGER.error("ramfs_create(" + filename + "): Already exists");
         return -EEXIST;
     }
 
     if ((mode & S_IFREG) == 0) {
-        LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
+        //LOGGER.error("ramfs_create(" + filename + "): Only files may be created");
         return -EINVAL;
     }
     (*FILES)[filename] = new vector < vector < char > * > ();
-    LOGGER.info(
-            "ramfs_create(" + filename + ") Added new empty vector at address " +
-            convert_pointer_to_string((*FILES)[filename]));
-    LOGGER.info("ramfs_create(" + filename + ") Exiting");
+    //LOGGER.info("ramfs_create(" + filename + ") Added new empty vector at address " + convert_pointer_to_string((*FILES)[filename]));
+    //LOGGER.info("ramfs_create(" + filename + ") Exiting");
     return 0;
 }
 
@@ -258,12 +256,12 @@ int ramfs_access(const char *path, int) {
 
 int ramfs_truncate(const char *path, off_t length) {
     string filename = clean_path(path);
-    LOGGER.info("[ramfs_truncate]" + filename);
+    //LOGGER.info("[ramfs_truncate]" + filename);
     auto len = static_cast<unsigned int>(length);
 
     auto entry = FILES->find(filename);
     if (entry == FILES->end()) {
-        LOGGER.error("ramfs_truncate(" + filename + "): Not found");
+        //LOGGER.error("ramfs_truncate(" + filename + "): Not found");
         return -ENOENT;
     }
 
@@ -273,13 +271,13 @@ int ramfs_truncate(const char *path, off_t length) {
         file_size += (*it)->size();
     }
 
-    LOGGER.info("[ramfs_truncate] file size = " + to_string(file_size) + ", length = " + to_string(len));
+    //LOGGER.info("[ramfs_truncate] file size = " + to_string(file_size) + ", length = " + to_string(len));
 
     if (file_size == len) {
         return 0;
     }
 
-    LOGGER.info("[ramfs_truncate] POUET");
+    //LOGGER.info("[ramfs_truncate] POUET");
 
 
     if (file_size <= len) {
@@ -296,19 +294,19 @@ int ramfs_truncate(const char *path, off_t length) {
             vector<char> *dummy_block = new vector<char>(length_of_last_block);
             blocks->push_back(dummy_block);
         }
-        LOGGER.info("[ramfs_truncate] exiting");
+        //LOGGER.info("[ramfs_truncate] exiting");
         return 0;
     }
 
 
     auto blocks_to_keep = static_cast<unsigned int>(int(ceil(len / BLOCK_SIZE)));
-    LOGGER.info("[ramfs_truncate] Keeping " + to_string(blocks_to_keep) + " blocks");
+    //LOGGER.info("[ramfs_truncate] Keeping " + to_string(blocks_to_keep) + " blocks");
     while (blocks_to_keep < blocks->size()) {
         delete blocks->back();
         blocks->pop_back();
     }
     //blocks.erase(blocks.begin() + blocks_to_keep, blocks.end());
-    LOGGER.info("[ramfs_truncate] " + to_string(blocks->size()) + " blocks left");
+    //LOGGER.info("[ramfs_truncate] " + to_string(blocks->size()) + " blocks left");
     if (blocks->empty()) {
         return 0;
     }
@@ -316,7 +314,7 @@ int ramfs_truncate(const char *path, off_t length) {
     auto block_to_trim = blocks->back();
     auto bytes_to_keep = len % BLOCK_SIZE;
     block_to_trim->erase(block_to_trim->begin() + bytes_to_keep, block_to_trim->end());
-    LOGGER.info("[ramfs_truncate] exiting");
+    //LOGGER.info("[ramfs_truncate] exiting");
 
     return 0;
 }
@@ -337,7 +335,7 @@ int ramfs_mkdir(const char *dir_path, mode_t mode) {
     }
     auto existing_file = FILES->find(path);
     if (existing_file != FILES->end()) {
-        LOGGER.error("A file with the name " + path + " already exists!");
+        //LOGGER.error("A file with the name " + path + " already exists!");
         return -1;
     }
     if (path[path.length() - 1] == '/') {
