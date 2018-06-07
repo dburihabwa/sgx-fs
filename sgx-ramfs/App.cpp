@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <string>
@@ -24,13 +25,15 @@
 
 
 #include "Enclave_u.h"
-#include "sgx_urts.h"
+#include "./sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
 #include "../utils/fs.hpp"
 #include "../utils/logging.h"
 #include "../utils/serialization.hpp"
 
 using namespace std;
+
+static char* BINARY_NAME;
 
 static const size_t BLOCK_SIZE = 4096;
 
@@ -516,6 +519,17 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
 }
 
 void* init(struct fuse_conn_info *conn) {
+Logger init_log("sgx-ramfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+  string binary_directory = get_directory(string(BINARY_NAME));
+  string path_to_enclave_token = binary_directory + "/enclave.token";
+  string path_to_enclave_so = binary_directory + "/enclave.signed.so";
+  if (initialize_enclave(&ENCLAVE_ID,
+                         path_to_enclave_token,
+                         path_to_enclave_so) < 0) {
+      // LOGGER.error("Fail to initialize enclave.");
+      exit(1);
+  }
   FILES = restore_sgx_map("sgx_ramfs_dump");
   for (auto it = FILES->begin(); it != FILES->end(); it++) {
     string filename = it->first;
@@ -527,29 +541,25 @@ void* init(struct fuse_conn_info *conn) {
     }
     delete tokens;
   }
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Mounted in " + to_string(duration) + " nanoseconds");
   return FILES;
 }
 
 void destroy(void* unused_private_data) {
+  Logger init_log("sgx-ramfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   dump_sgx_map((*FILES), "sgx_ramfs_dump");
   sgx_destroy_enclave(ENCLAVE_ID);
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Unmounted in " + to_string(duration) + " nanoseconds");
 }
 
 static struct fuse_operations ramfs_oper;
-
 int main(int argc, char **argv) {
-    string binary_directory = get_directory(string(argv[0]));
-    string path_to_enclave_token = binary_directory + "/enclave.token";
-    string path_to_enclave_so = binary_directory + "/enclave.signed.so";
-    cout << path_to_enclave_token << endl;
-    cout << path_to_enclave_so << endl;
-    if (initialize_enclave(&ENCLAVE_ID,
-                           path_to_enclave_token,
-                           path_to_enclave_so) < 0) {
-        //LOGGER.error("Fail to initialize enclave.");
-        exit(1);
-    }
-
+    BINARY_NAME = argv[0];
     ramfs_oper.getattr = ramfs_getattr;
     ramfs_oper.readdir = ramfs_readdir;
     ramfs_oper.open = ramfs_open;

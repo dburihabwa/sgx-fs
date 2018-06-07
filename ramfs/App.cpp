@@ -422,6 +422,8 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
 }
 
 void* init(struct fuse_conn_info *conn) {
+  Logger init_log("ramfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   FILES = restore_map("ramfs_dump");
   for (auto it = FILES->begin(); it != FILES->end(); it++) {
     string filename = it->first;
@@ -433,11 +435,19 @@ void* init(struct fuse_conn_info *conn) {
     }
     delete tokens;
   }
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Mounted in " + to_string(duration) + " nanoseconds");
   return FILES;
 }
 
 void destroy(void* unused_private_data) {
+  Logger init_log("ramfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   dump_map((*FILES), "ramfs_dump");
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Unmounted in " + to_string(duration) + " nanoseconds");
 }
 
 static struct fuse_operations ramfs_oper;

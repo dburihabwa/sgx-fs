@@ -2,13 +2,27 @@
  * Code directly taken and modified from Dennis Pfisterer's fuse-ramfs
  * https://github.com/pfisterer/fuse-ramfs
  */
+
+#define FUSE_USE_VERSION 26
+
+#include <fcntl.h>
+#include <fuse.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+
+#include <chrono>
 #include <iostream>
 #include <string>
-using namespace std;
 
 #include "Enclave_u.h"
-#include "sgx_urts.h"
+#include "./sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
+
+using namespace std;
 
 static string strip_leading_slash(string filename) {
   bool starts_with_slash = false;
@@ -20,18 +34,8 @@ static string strip_leading_slash(string filename) {
   return starts_with_slash ? filename.substr(1, string::npos) : filename;
 }
 
-sgx_enclave_id_t ENCLAVE_ID;
-
-extern "C" {
-
-#define FUSE_USE_VERSION 26
-#include <errno.h>
-#include <fcntl.h>
-#include <fuse.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
+static sgx_enclave_id_t ENCLAVE_ID;
+static char* BINARY_NAME;
 
 void ocall_print(const char* str) {
   printf("[ocall_print] %s\n", str);
@@ -104,7 +108,7 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   }
   cout << "[sgxfs_readdir] freeing out data structures" << endl;
   if (entries != NULL) {
-    delete(entries);
+    delete [] entries;
   }
   cout << "[exiting] sgxfs_readdir" << endl;
   return 0;
@@ -262,17 +266,36 @@ int sgxfs_setxattr(const char *, const char *, const char *, size_t, int) {
   return -EINVAL;
 }
 
+void* init(struct fuse_conn_info *conn) {
+  Logger init_log("sgxfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+  string binary_directory = get_directory(string(BINARY_NAME));
+  string path_to_enclave_token = binary_directory + "/enclave.token";
+  string path_to_enclave_so = binary_directory + "/enclave.signed.so";
+  if (initialize_enclave(&ENCLAVE_ID,
+                         path_to_enclave_token,
+                         path_to_enclave_so) < 0) {
+      // LOGGER.error("Fail to initialize enclave.");
+      exit(1);
+  }
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Loaded data in " + to_string(duration) + " nanoseconds");
+}
+
 void destroy(void* private_data) {
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+  Logger init_log("sgxfs-mount.log");
   sgx_destroy_enclave(ENCLAVE_ID);
+  chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+  auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
+  init_log.info("Unmounted in " + to_string(duration) + " nanoseconds");
 }
 
 static struct fuse_operations sgxfs_oper;
 
 int main(int argc, char **argv) {
-  if (initialize_enclave(&ENCLAVE_ID, "enclave.token", "enclave.signed.so") < 0) {
-    cerr << "Fail to initialize enclave." << endl;
-    return 1;
-  }
+  BINARY_NAME = argv[0];
   sgxfs_oper.getattr = sgxfs_getattr;
   sgxfs_oper.readdir = sgxfs_readdir;
   sgxfs_oper.open = sgxfs_open;
@@ -300,5 +323,4 @@ int main(int argc, char **argv) {
   sgxfs_oper.destroy = destroy;
 
   return fuse_main(argc, argv, &sgxfs_oper, NULL);
-}
 }
