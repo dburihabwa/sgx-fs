@@ -157,7 +157,7 @@ all: $(App_Name) $(Enclave_Name)
 	@echo "You can also sign the enclave using an external signing tool. See User's Guide for more details."
 	@echo "To build the project in simulation mode set SGX_MODE=SIM. To build the project in prerelease mode set SGX_PRERELEASE=1 and SGX_MODE=HW."
 else
-all: $(App_Name) $(Signed_Enclave_Name) ramfs.bin
+all: $(App_Name) $(Signed_Enclave_Name) ramfs.bin sgxfs.bin
 endif
 
 run: all
@@ -184,6 +184,24 @@ ramfs.o: ramfs/App.cpp
 ramfs.bin: ramfs.o fs.o logging.o serialization.o
 	g++ $^ -o $@ -lpthread $(shell pkg-config fuse --libs)
 
+######## sgxfs ########
+#sgxfs.o:
+#sgxfs.bin:
+sgxfs/Enclave_u.c: $(SGX_EDGER8R) Enclave/Enclave.edl
+	@cd sgxfs && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
+
+sgxfs/Enclave_u.o: sgxfs/Enclave_u.c
+	@$(CC) $(App_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+sgxfs/%.o: sgxfs/%.cpp
+	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
+	@echo "CXX  <=  $<"
+
+sgxfs.bin: sgxfs/Enclave_u.o $(App_Cpp_Objects) fs.o logging.o serialization.o
+	@$(CXX) $^ -o $@ $(App_Link_Flags)
+	@echo "LINK =>  $@"
 
 ######## App Objects ########
 
@@ -229,4 +247,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o ramfs.bin serialization.o
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o serialization.o ramfs.bin sgxfs.bin
