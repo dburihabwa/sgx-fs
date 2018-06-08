@@ -269,8 +269,8 @@ void* init(struct fuse_conn_info *conn) {
 }
 
 void destroy(void* private_data) {
-  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   Logger init_log("sgxfs-mount.log");
+  chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   sgx_destroy_enclave(ENCLAVE_ID);
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
