@@ -52,4 +52,20 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# SGX generated files
 enclave.token
+*/Enclave_u.c
+*/Enclave_u.h
+*/Enclave_t.c
+*/Enclave_r.h
+
+# Binaries
+*.bin
+
+# Dump folders
+*/ramfs_dump/*
+*/sgx_ramfs_dump/*
+*/sgxfs_dump/*
+
+# Logs
+*.log
