@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -46,9 +45,14 @@ static void make_parent_directory(const std::string &path) {
   delete tokens;
 }
 
+static void make_directory(const std::string &path) {
+  string new_path = path + "/ignored";
+  make_parent_directory(new_path);
+}
+
 void dump_map(const std::map<std::string, std::vector < std::vector < char>*>*> &files, const std::string &directory_path) {
   if (!is_a_directory(directory_path)) {
-    throw new std::runtime_error(directory_path + " is not a valid directory!");
+    make_directory(directory_path);
   }
   for (auto it = files.begin(); it != files.end(); it++) {
     std::vector<std::vector<char>*>* blocks = it->second;
@@ -104,7 +108,7 @@ static vector<string>* list_files(const std::string &path) {
 
 std::map<std::string, vector<vector<char>*>*>* restore_map(const std::string &path) {
   if (!is_a_directory(path)) {
-    throw new runtime_error(path + " is not a directory!");
+    make_directory(path);
   }
   const size_t BLOCK_SIZE = 4096;
   auto files = new std::map<std::string, vector<vector<char>*>*>();
@@ -138,7 +142,7 @@ std::map<std::string, vector<vector<char>*>*>* restore_map(const std::string &pa
 void dump_sgx_map(const std::map<std::string, std::vector<sgx_sealed_data_t*>*> &files,
                   const std::string &directory_path) {
   if (!is_a_directory(directory_path)) {
-    throw new std::runtime_error(directory_path + " is not a valid directory!");
+    make_directory(directory_path);
   }
   for (auto it = files.begin(); it != files.end(); it++) {
     std::vector<sgx_sealed_data_t*>* blocks = it->second;
@@ -177,7 +181,7 @@ static map<string, vector<string>> group_blocks_by_file(const vector<string> &bl
 
 std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const std::string &path) {
   if (!is_a_directory(path)) {
-    throw new runtime_error(path + " is not a directory!");
+    make_directory(path);
   }
   auto files_on_disk = list_files(path);
   auto grouped_blocks = group_blocks_by_file((*files_on_disk));
