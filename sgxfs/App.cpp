@@ -52,8 +52,6 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
   stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
   if (filename == "/") {
-    cout << "sgxfs_getattr(" << filename << "): Returning attributes for /"
-         << endl;
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_nlink = 2;
 
@@ -76,41 +74,28 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
 
 static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
-  cout << "[entering] sgxfs_readdir" << endl;
   if (strcmp(path, "/") != 0) {
-    cout << "sgxfs_readdir(" << path << "): Only / allowed" << endl;
+    cerr << "sgxfs_readdir(" << path << "): Only / allowed" << endl;
     return -ENOENT;
   }
-  cout << "[sgxfs_readdir] adding basic entries" << endl;
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
-  cout << "[sgxfs_readdir] added basic entries" << endl;
 
   int number_of_entries;
-  cout << "[sgxfs_readdir] sgx in" << endl;
   sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
-  cout << "[sgxfs_readdir] sgx out expecting " << number_of_entries << " entries" << endl;
   const size_t step = 256;
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
-  cout << "Initializing buffer of length " << buffer_length << endl;
   int size;
-  cout << "[sgxfs_readdir] sgx in" << endl;
   status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
-  cout << "[sgxfs_readdir] sgx out with " << size << " entries of size " << sizeof(entries[0]) << endl;
-  cout << "[sgxfs_readdir] sgx out with " << entries << endl;
 
   for (int i = 0; i < buffer_length; i += step) {
     char* entry = entries + (i * sizeof(char));
-    cout << "[sgxfs_readdir] adding " << entry << " to the list (length = " << strlen(entry) << ")" << endl;
     filler(buf, entry, NULL, 0);
-    cout << "[sgxfs_readdir] added  " << entry << " to the list" << endl;
   }
-  cout << "[sgxfs_readdir] freeing out data structures" << endl;
   if (entries != NULL) {
     delete [] entries;
   }
-  cout << "[exiting] sgxfs_readdir" << endl;
   return 0;
 }
 
@@ -120,7 +105,7 @@ static int sgxfs_open(const char *path, struct fuse_file_info *fi) {
   sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
 
   if (!found) {
-    cout << "sgxfs_open(" << filename << "): Not found" << endl;
+    cerr << "sgxfs_open(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
 
