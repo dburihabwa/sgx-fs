@@ -519,7 +519,7 @@ int ramfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
 }
 
 void* init(struct fuse_conn_info *conn) {
-Logger init_log("sgx-ramfs-mount.log");
+  Logger init_log("sgx-ramfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   string binary_directory = get_directory(string(BINARY_NAME));
   string path_to_enclave_token = binary_directory + "/enclave.token";
@@ -557,39 +557,39 @@ void destroy(void* unused_private_data) {
   init_log.info("Unmounted in " + to_string(duration) + " nanoseconds");
 }
 
-static struct fuse_operations ramfs_oper;
+static struct fuse_operations sgx_ramfs_oper;
 int main(int argc, char **argv) {
     BINARY_NAME = argv[0];
-    ramfs_oper.getattr = ramfs_getattr;
-    ramfs_oper.readdir = ramfs_readdir;
-    ramfs_oper.open = ramfs_open;
-    ramfs_oper.read = ramfs_read;
-    ramfs_oper.mknod = ramfs_mknod;
-    ramfs_oper.write = ramfs_write;
-    ramfs_oper.unlink = ramfs_unlink;
+    sgx_ramfs_oper.getattr = ramfs_getattr;
+    sgx_ramfs_oper.readdir = ramfs_readdir;
+    sgx_ramfs_oper.open = ramfs_open;
+    sgx_ramfs_oper.read = ramfs_read;
+    sgx_ramfs_oper.mknod = ramfs_mknod;
+    sgx_ramfs_oper.write = ramfs_write;
+    sgx_ramfs_oper.unlink = ramfs_unlink;
 
-    ramfs_oper.setxattr = ramfs_setxattr;
-    ramfs_oper.mkdir = ramfs_mkdir;
-    ramfs_oper.rmdir = ramfs_rmdir;
-    ramfs_oper.symlink = ramfs_symlink;
-    ramfs_oper.rename = ramfs_rename;
-    ramfs_oper.link = ramfs_link;
-    ramfs_oper.chmod = ramfs_chmod;
-    ramfs_oper.chown = ramfs_chown;
-    ramfs_oper.truncate = ramfs_truncate;
-    ramfs_oper.utime = ramfs_utime;
-    ramfs_oper.opendir = ramfs_opendir;
-    ramfs_oper.access = ramfs_access;
-    ramfs_oper.create = ramfs_create;
-    ramfs_oper.fgetattr = ramfs_fgetattr;
-    ramfs_oper.utimens = ramfs_utimens;
-    ramfs_oper.bmap = ramfs_bmap;
-    ramfs_oper.flush = ramfs_flush;
-    ramfs_oper.release = ramfs_release;
-    ramfs_oper.fsync = ramfs_fsync;
+    sgx_ramfs_oper.setxattr = ramfs_setxattr;
+    sgx_ramfs_oper.mkdir = ramfs_mkdir;
+    sgx_ramfs_oper.rmdir = ramfs_rmdir;
+    sgx_ramfs_oper.symlink = ramfs_symlink;
+    sgx_ramfs_oper.rename = ramfs_rename;
+    sgx_ramfs_oper.link = ramfs_link;
+    sgx_ramfs_oper.chmod = ramfs_chmod;
+    sgx_ramfs_oper.chown = ramfs_chown;
+    sgx_ramfs_oper.truncate = ramfs_truncate;
+    sgx_ramfs_oper.utime = ramfs_utime;
+    sgx_ramfs_oper.opendir = ramfs_opendir;
+    sgx_ramfs_oper.access = ramfs_access;
+    sgx_ramfs_oper.create = ramfs_create;
+    sgx_ramfs_oper.fgetattr = ramfs_fgetattr;
+    sgx_ramfs_oper.utimens = ramfs_utimens;
+    sgx_ramfs_oper.bmap = ramfs_bmap;
+    sgx_ramfs_oper.flush = ramfs_flush;
+    sgx_ramfs_oper.release = ramfs_release;
+    sgx_ramfs_oper.fsync = ramfs_fsync;
 
-    ramfs_oper.init = init;
-    ramfs_oper.destroy = destroy;
+    sgx_ramfs_oper.init = init;
+    sgx_ramfs_oper.destroy = destroy;
 
-    return fuse_main(argc, argv, &ramfs_oper, NULL);
+    return fuse_main(argc, argv, &sgx_ramfs_oper, NULL);
 }
