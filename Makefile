@@ -199,7 +199,7 @@ sgxfs/%.o: sgxfs/%.cpp
 	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-sgxfs.bin: sgxfs/Enclave_u.o $(App_Cpp_Objects) fs.o logging.o serialization.o
+sgxfs.bin: sgxfs/sgx_utils/sgx_utils.o sgxfs/Enclave_u.o sgxfs/App.o fs.o logging.o serialization.o
 	@$(CXX) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
@@ -247,4 +247,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o serialization.o ramfs.bin sgxfs.bin
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o serialization.o ramfs.bin sgxfs.bin sgxfs/*.o sgx-ramfs/*.o ramfs/*.o
