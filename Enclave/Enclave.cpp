@@ -131,3 +131,44 @@ sgx_status_t ramfs_decrypt(const char* filename,
   sgx_status_t status = sgx_unseal_data(encrypted, NULL, NULL, (uint8_t*) plaintext, &data_size);
   return status;
 }
+
+
+int sgxfs_dump(const char* pathname,
+               sgx_sealed_data_t* sealed_data,
+               size_t sealed_size) {
+  string path(pathname);
+  auto entry = files.find(path);
+  if (entry == files.end()) {
+    return -ENOENT;
+  }
+  auto bytes = entry->second;
+  size_t data_size = bytes.size();
+  sealed_size = sizeof(sgx_sealed_data_t) + data_size;
+  uint8_t* buffer = new uint8_t[data_size];
+  // TODO(dburihabwa) Replace with a call to memcpy or pass bytes.data() c++11
+  for (size_t i = 0; i < data_size; i++) {
+    buffer[i] = bytes[i];
+  }
+  sgx_status_t ret = sgx_seal_data(0, NULL, data_size, buffer, sealed_size, sealed_data);
+  delete [] buffer;
+  return ret;
+}
+
+int sgxfs_restore(const char* pathname,
+                  const sgx_sealed_data_t* sealed_data,
+                  size_t sealed_size) {
+  string path(pathname);
+  auto entry = files.find(path);
+  if (entry != files.end()) {
+    return 0;
+  }
+  uint32_t data_size = sealed_data->aes_data.payload_size;
+  uint8_t* plaintext = new uint8_t[data_size];
+  sgx_status_t ret = sgx_unseal_data(sealed_data, NULL, NULL, plaintext, &data_size);
+  vector<char> bytes(data_size);
+  for (size_t i = 0; i < data_size; i++) {
+    bytes[i] = plaintext[i];
+  }
+  files[path] = bytes;
+  return ret;
+}

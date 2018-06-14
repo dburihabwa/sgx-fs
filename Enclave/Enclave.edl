@@ -15,6 +15,8 @@ enclave {
         public int ramfs_list_entries([out, size=size] char* filenames, size_t size);
         public int ramfs_create_file([in, string] const char *pathname);
         public int ramfs_delete_file([in, string] const char *pathname);
+        public int sgxfs_dump([in, string] const char *pathname, [out, size=sealed_size] sgx_sealed_data_t* sealed_data, size_t sealed_size);
+        public int sgxfs_restore([in, string] const char *pathname, [in, size=sealed_size] const sgx_sealed_data_t* sealed_data, size_t sealed_size);
     };
 
     untrusted {

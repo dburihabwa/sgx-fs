@@ -84,6 +84,7 @@ size_t restore(const std::string &path, char* buffer) {
   return size;
 }
 
+// TODO(dburihabwa) Return a vector rather than a pointer
 static vector<string>* list_files(const std::string &path) {
   std::vector<string>* files = new std::vector<string>();
   DIR* directory = opendir(path.c_str());
@@ -207,5 +208,28 @@ std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const s
 
     (*files)[filename] = sealed_blocks;
   }
+  return files;
+}
+
+std::map<std::string, sgx_sealed_data_t*>* restore_sgxfs_from_disk(const std::string &path) {
+  if (!is_a_directory(path)) {
+    make_directory(path);
+  }
+  auto files_on_disk = list_files(path);
+  auto files = new std::map<std::string, sgx_sealed_data_t*>();
+  for (auto it = files_on_disk->begin(); it != files_on_disk->end(); it++) {
+    string filename = (*it);
+    std::ifstream stream;
+    stream.open(filename, std::ios::binary);
+    stream.seekg(0, std::ios::end);
+    size_t restored = stream.tellg();
+    stream.seekg(stream.beg);
+    sgx_sealed_data_t* data = reinterpret_cast<sgx_sealed_data_t*>(malloc(restored));
+    stream.read(reinterpret_cast<char*>(data), restored);
+    stream.close();
+    filename = clean_path(filename.substr(path.length(), string::npos));
+    (*files)[filename] = data;
+  }
+  delete files_on_disk;
   return files;
 }

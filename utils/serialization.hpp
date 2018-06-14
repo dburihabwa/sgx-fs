@@ -26,5 +26,12 @@ void dump_sgx_map(const std::map<std::string, std::vector<sgx_sealed_data_t*>*> 
  */
 std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const std::string &path);
 
+/**
+ * Restores files for an sgxfs instance
+ * @param path Path to the directory to explore to recover the data
+ * @return The recovered sealed files
+ */
+std::map<std::string, sgx_sealed_data_t*>* restore_sgxfs_from_disk(const std::string &path);
+
 #define __SERIALIZATION_H__
 #endif /* __SERIALIZATION_H__*/

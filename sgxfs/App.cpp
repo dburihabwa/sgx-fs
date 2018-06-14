@@ -16,23 +16,17 @@
 
 #include <chrono>
 #include <iostream>
+#include <map>
 #include <string>
 
 #include "Enclave_u.h"
 #include "./sgx_urts.h"
 #include "sgx_utils/sgx_utils.h"
+#include "../utils/fs.hpp"
+#include "../utils/serialization.hpp"
+#include "../utils/logging.h"
 
 using namespace std;
-
-static string strip_leading_slash(string filename) {
-  bool starts_with_slash = false;
-
-  if (filename.size() > 0)
-    if (filename[0] == '/')
-      starts_with_slash = true;
-
-  return starts_with_slash ? filename.substr(1, string::npos) : filename;
-}
 
 static sgx_enclave_id_t ENCLAVE_ID;
 static char* BINARY_NAME;
@@ -89,7 +83,7 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   int size;
   status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
 
-  for (int i = 0; i < buffer_length; i += step) {
+  for (size_t i = 0; i < buffer_length; i += step) {
     char* entry = entries + (i * sizeof(char));
     filler(buf, entry, NULL, 0);
   }
@@ -251,7 +245,21 @@ int sgxfs_setxattr(const char *, const char *, const char *, size_t, int) {
   return -EINVAL;
 }
 
-void* init(struct fuse_conn_info *conn) {
+static void restore_fs(const int enclave_id, const string &directory) {
+  map<string, sgx_sealed_data_t*>* restored_files = restore_sgxfs_from_disk("sgxfs_dump");
+  for (auto it = restored_files->begin(); it != restored_files->end();) {
+    const char* filename = it->first.c_str();
+    sgx_sealed_data_t* sealed_file = it->second;
+    size_t sealed_size = sizeof(sgx_sealed_data_t) + sealed_file->aes_data.payload_size;
+    int ret;
+    sgx_status_t status = sgxfs_restore(enclave_id, &ret, filename, sealed_file, sealed_size);
+    restored_files->erase(it++);
+    free(sealed_file);
+  }
+  delete restored_files;
+}
+
+void* sgxfs_init(struct fuse_conn_info *conn) {
   Logger init_log("sgxfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   string binary_directory = get_directory(string(BINARY_NAME));
@@ -263,14 +271,46 @@ void* init(struct fuse_conn_info *conn) {
       // LOGGER.error("Fail to initialize enclave.");
       exit(1);
   }
+  restore_fs(ENCLAVE_ID, "sgxfs_dump");
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
   init_log.info("Loaded data in " + to_string(duration) + " nanoseconds");
+  return &ENCLAVE_ID;
 }
 
-void destroy(void* private_data) {
+static void dump_fs(const string &path) {
+  int number_of_entries;
+  sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
+  const size_t step = 256;
+  const size_t buffer_length = number_of_entries * step;
+  char *entries = new char[buffer_length];
+  int size;
+  status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
+
+  for (size_t i = 0; i < buffer_length; i += step) {
+    char* entry = entries + (i * sizeof(char));
+    string pathname(entry);
+    int file_size;
+    status = ramfs_get_size(ENCLAVE_ID, &file_size, pathname.c_str());
+    size_t sealed_size = sizeof(sgx_sealed_data_t) + file_size;
+    sgx_sealed_data_t* sealed_data = reinterpret_cast<sgx_sealed_data_t*>(malloc(sealed_size));
+    int ret;
+    status = sgxfs_dump(ENCLAVE_ID,
+                        &ret,
+                        pathname.c_str(),
+                        sealed_data,
+                        sealed_size);
+    string dump_pathname = path + "/" + pathname;
+    dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
+    free(sealed_data);
+  }
+  delete [] entries;
+}
+
+void sgxfs_destroy(void* private_data) {
   Logger init_log("sgxfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+  dump_fs("sgxfs_dump");
   sgx_destroy_enclave(ENCLAVE_ID);
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
@@ -305,7 +345,9 @@ int main(int argc, char **argv) {
   sgxfs_oper.fgetattr = sgxfs_fgetattr;
   sgxfs_oper.utimens = sgxfs_utimens;
   sgxfs_oper.bmap = sgxfs_bmap;
-  sgxfs_oper.destroy = destroy;
+
+  sgxfs_oper.init = sgxfs_init;
+  sgxfs_oper.destroy = sgxfs_destroy;
 
   return fuse_main(argc, argv, &sgxfs_oper, NULL);
 }
