@@ -271,6 +271,8 @@ void* sgxfs_init(struct fuse_conn_info *conn) {
       // LOGGER.error("Fail to initialize enclave.");
       exit(1);
   }
+  int ret;
+  init_filesystem(ENCLAVE_ID, &ret);
   restore_fs(ENCLAVE_ID, "sgxfs_dump");
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
@@ -311,6 +313,8 @@ void sgxfs_destroy(void* private_data) {
   Logger init_log("sgxfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   dump_fs("sgxfs_dump");
+  int ret;
+  destroy_filesystem(ENCLAVE_ID, &ret);
   sgx_destroy_enclave(ENCLAVE_ID);
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
