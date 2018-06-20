@@ -274,7 +274,7 @@ void* sgxfs_init(struct fuse_conn_info *conn) {
   restore_fs(ENCLAVE_ID, "sgxfs_dump");
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-  init_log.info("Loaded data in " + to_string(duration) + " nanoseconds");
+  init_log.info("Mounted in " + to_string(duration) + " nanoseconds");
   return &ENCLAVE_ID;
 }
 
