@@ -176,6 +176,8 @@ logging.o: utils/logging.cpp
 serialization.o: utils/serialization.cpp
 	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
+filesystem.o: utils/filesystem.cpp
+	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
 ######## Ramfs ########
 ramfs.o: ramfs/App.cpp
