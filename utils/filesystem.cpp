@@ -1,5 +1,7 @@
 #include "filesystem.hpp"
 
+#include <climits>
+
 #include <cmath>
 #include <cstring>
 
@@ -7,9 +9,6 @@
 #include <map>
 #include <string>
 #include <vector>
-
-#include "../utils/fs.hpp"
-#include "../utils/serialization.hpp"
 
 FileSystem::FileSystem(const size_t block_size) {
   this->block_size = block_size;
@@ -23,9 +22,9 @@ FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* 
   this->files = restored_files;
   this->directories = new std::map<std::string, bool>();
   for (auto it = this->files->begin(); it != this->files->end(); it++) {
-    string filename = it->first;
-    vector<string>* tokens = split_path(filename);
-    string directory_name;
+    std::string filename = it->first;
+    std::vector<std::string>* tokens = split_path(filename);
+    std::string directory_name;
     for (size_t i = 0; i < tokens->size() - 1; i++) {
       directory_name += tokens->at(i) + "/";
       this->mkdir(directory_name);
@@ -57,7 +56,7 @@ int FileSystem::create(const std::string &path) {
   if (this->files->find(path) != this->files->end()) {
     return -EEXIST;
   }
-  (*this->files)[path] = new vector<vector<char>*>();
+  (*this->files)[path] = new std::vector<std::vector<char>*>();
   return 0;
 }
 
@@ -78,7 +77,7 @@ int FileSystem::unlink(const std::string &path) {
 
 int FileSystem::write(const std::string &path, char *data, const size_t offset, const size_t length) {
   std::string filename = clean_path(path);
-  auto start = chrono::high_resolution_clock::now();
+  auto start = std::chrono::high_resolution_clock::now();
   auto entry = this->files->find(filename);
   if (entry == this->files->end()) {
       return -ENOENT;
@@ -88,7 +87,7 @@ int FileSystem::write(const std::string &path, char *data, const size_t offset, 
   auto offset_in_block = offset % this->block_size;
   size_t written = 0;
   if (block_index < blocks->size()) {
-      vector<char> *block = (*blocks)[block_index];
+      std::vector<char> *block = (*blocks)[block_index];
       size_t bytes_to_write = length;
       if (this->block_size < (offset_in_block + length)) {
         bytes_to_write = this->block_size - offset_in_block;
@@ -105,17 +104,17 @@ int FileSystem::write(const std::string &path, char *data, const size_t offset, 
     if (this->block_size < bytes_to_write) {
       bytes_to_write = this->block_size;
     }
-    vector<char> *block = new vector<char>(bytes_to_write);
+    std::vector<char> *block = new std::vector<char>(bytes_to_write);
     memcpy(block->data(), data + written, bytes_to_write);
     blocks->push_back(block);
     written += bytes_to_write;
   }
-  auto end = chrono::high_resolution_clock::now();
-  auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   return written;
 }
 
-int FileSystem::read_data(const vector<vector< char>*>* blocks,
+int FileSystem::read_data(const std::vector<std::vector< char>*>* blocks,
                           char *buffer,
                           const size_t block_index,
                           const size_t offset,
@@ -125,7 +124,7 @@ int FileSystem::read_data(const vector<vector< char>*>* blocks,
   for (size_t index = block_index;
        index < blocks->size() && read < size;
        index++, offset_in_block = 0) {
-    vector<char> *block = blocks->at(index);
+    std::vector<char> *block = blocks->at(index);
     auto size_to_copy = size - read;
     if (size_to_copy > block->size()) {
       size_to_copy = block->size();
@@ -137,8 +136,8 @@ int FileSystem::read_data(const vector<vector< char>*>* blocks,
 }
 
 int FileSystem::read(const std::string &path, char *data, const size_t offset, const size_t length) {
-  string filename = clean_path(path);
-  auto start = chrono::high_resolution_clock::now();
+  std::string filename = clean_path(path);
+  auto start = std::chrono::high_resolution_clock::now();
   auto entry = this->files->find(filename);
   if (entry == this->files->end()) {
     return -ENOENT;
@@ -149,8 +148,8 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
     return 0;
   }
   int read = this->read_data(blocks, data, block_index, offset, length);
-  auto end = chrono::high_resolution_clock::now();
-  auto elapsed = chrono::duration_cast<chrono::microseconds>(end - start);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   return read;
 }
 
@@ -177,8 +176,8 @@ int FileSystem::rmdir(const std::string &directory) {
   return 0;
 }
 
-vector<string> FileSystem::readdir(const string &path) {
-  string pathname = clean_path(path);
+std::vector<std::string> FileSystem::readdir(const std::string &path) const {
+  std::string pathname = clean_path(path);
   std::vector<std::string> entries;
   if (pathname.empty()) {
     return entries;
@@ -204,4 +203,106 @@ vector<string> FileSystem::readdir(const string &path) {
 
 size_t FileSystem::get_block_size() const {
   return this->block_size;
+}
+
+std::string FileSystem::strip_leading_slash(const std::string &filename) {
+    std::string stripped = filename;
+    while (stripped.length() > 0 && stripped.front() == '/') {
+        stripped = stripped.substr(1, std::string::npos);
+    }
+    return stripped;
+}
+
+std::string FileSystem::strip_trailing_slash(const std::string &filename) {
+    std::string stripped = filename;
+    while (stripped.length() > 0 && stripped.back() == '/') {
+        stripped.pop_back();
+    }
+    return stripped;
+}
+
+std::string FileSystem::clean_path(const std::string &filename) {
+    std::string trimmed = strip_leading_slash(strip_trailing_slash(filename));
+    size_t position;
+    while ((position = trimmed.find("//")) != std::string::npos) {
+        trimmed = trimmed.replace(position, 2, "/");
+    }
+    return trimmed;
+}
+
+bool FileSystem::starts_with(const std::string &pattern, const std::string &path) {
+    if (path.length() <= pattern.length()) {
+        return false;
+    }
+    return path.compare(0, pattern.length(), pattern.c_str()) == 0;
+}
+
+std::string FileSystem::get_relative_path(const std::string &directory, const std::string &file) {
+    std::string directory_path = clean_path(directory);
+    std::string file_path = clean_path(file);
+    if (!starts_with(directory_path, file_path)) {
+        throw std::runtime_error("directory and file do not start with the same substring");
+    }
+    return clean_path(file_path.substr(directory_path.length(), std::string::npos));
+}
+
+/**
+ * Returns a full path to the library
+ * @param path Path to interpret
+ * @return Absolute path
+ */
+std::string FileSystem::get_absolute_path(const std::string &path) {
+  char absolute_path[PATH_MAX];
+  realpath(path.c_str(), absolute_path);
+  return std::string(absolute_path);
+}
+
+std::string FileSystem::get_directory(const std::string &path) {
+  std::string absolute_path = get_absolute_path(path);
+  size_t pos = absolute_path.rfind("/");
+  if (pos == std::string::npos) {
+    return "/";
+  }
+  return absolute_path.substr(0, pos);
+}
+
+/**
+ * Test if a file is located in a directory NOT in its subdirectories.
+ * @param directory Path to the directory
+ * @param file Path to the file
+ * @return True if the file is directly located in the directory. False otherwise
+ */
+bool FileSystem::is_in_directory(const std::string &directory, const std::string &file) {
+    std::string directory_path = clean_path(directory);
+    std::string file_path = clean_path(file);
+    if (!starts_with(directory_path, file_path)) {
+        return false;
+    }
+    std::string relative_file_path = get_relative_path(directory_path, file_path);
+    if (relative_file_path.find("/") != std::string::npos) {
+        return false;
+    }
+    return true;
+}
+
+std::vector<std::string>* FileSystem::split_path(const std::string &path) {
+  std::vector<std::string>* tokens = new std::vector<std::string>();
+  std::string trimmed_path = clean_path(path);
+  while (trimmed_path.length() > 0) {
+    size_t start = 0, pos = 0;
+    pos = trimmed_path.find("/", start);
+    if (pos == std::string::npos) {
+      tokens->push_back(trimmed_path.substr(start, trimmed_path.length()));
+      break;
+    }
+    size_t length = pos - start;
+    if (length > 0) {
+      std::string token = trimmed_path.substr(start, length);
+      if (token.length() > 0) {
+        tokens->push_back(token);
+      }
+    }
+    trimmed_path = clean_path(trimmed_path.substr(pos + 1, std::string::npos));
+  }
+  return tokens;
 }
