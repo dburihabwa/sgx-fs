@@ -75,8 +75,8 @@ endif
 
 # App_Cpp_Files := sgx-ramfs/App.cpp $(wildcard sgx-ramfs/Edger8rSyntax/*.cpp) $(wildcard sgx-ramfs/TrustedLibrary/*.cpp)
 App_Cpp_Files := sgx-ramfs/App.cpp sgx-ramfs/sgx_utils/sgx_utils.cpp
-# App_Include_Paths := -IInclude -IApp -I$(SGX_SDK)/include
-App_Include_Paths := -IApp -I$(SGX_SDK)/include
+App_Include_Paths := -IInclude -IApp -I$(SGX_SDK)/include
+#App_Include_Paths := -IApp -I$(SGX_SDK)/include
 
 App_C_Flags := $(SGX_COMMON_CFLAGS) -Wextra -Wunused-but-set-variable -Wunused-function -fPIC -Wno-attributes $(App_Include_Paths) $(shell pkg-config fuse --cflags) -g
 
@@ -119,13 +119,16 @@ Crypto_Library_Name := sgx_tcrypto
 # Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/Edger8rSyntax/*.cpp) $(wildcard Enclave/TrustedLibrary/*.cpp)
 Enclave_Cpp_Files := Enclave/Enclave.cpp Enclave/Sealing/Sealing.cpp
 # Enclave_Include_Paths := -IInclude -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/stlport
-Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/stlport
+# Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/stlport
+Enclave_Include_Paths := -IInclude -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/libcxx -I$(SGX_SDK)/include/tlibc
 
 Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector $(Enclave_Include_Paths)
 Enclave_Cpp_Flags := $(Enclave_C_Flags) -std=c++11 -nostdinc++
-Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
+
+
+Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) $(Enclave_Cpp_Flags) -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
 	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
-	-Wl,--start-group -lsgx_tstdc -lsgx_tstdcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
 	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
 	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
 	-Wl,--defsym,__ImageBase=0
@@ -177,7 +180,10 @@ serialization.o: utils/serialization.cpp
 	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wall -Wextra -pedantic -o $@
 
 filesystem.o: utils/filesystem.cpp
-	g++ $< -isystem $(SGX_SDK)/include -std=c++11 -c -Wall -Wextra -pedantic -o $@
+	g++ $< $(App_Cpp_Flags) -c -Wall -Wextra -pedantic -o $@
+
+filesystem.a: filesystem.o
+	ar rvs $@ $<
 
 ######## Ramfs ########
 ramfs.o: ramfs/App.cpp
@@ -249,4 +255,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o serialization.o ramfs.bin sgxfs.bin sgxfs/*.o sgx-ramfs/*.o ramfs/*.o
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) sgx-ramfs/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* fs.o logging.o ramfs.o serialization.o ramfs.bin sgxfs.bin sgxfs/*.o sgx-ramfs/*.o ramfs/*.o filesystem.o filesystem.a
