@@ -29,7 +29,9 @@ class FileSystem {
     int mkdir(const std::string &directory);
     int rmdir(const std::string &directory);
     std::vector<std::string> readdir(const std::string &directory) const;
-
+    bool is_file(const std::string &path) const;
+    bool is_directory(const std::string &path) const;
+    bool exists(const std::string &path) const;
     size_t get_block_size() const;
     void set_files();
 // Path static util functions

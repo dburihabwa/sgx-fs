@@ -285,6 +285,20 @@ bool FileSystem::is_in_directory(const std::string &directory, const std::string
     return true;
 }
 
+bool FileSystem::is_file(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->directories->find(cleaned_path) != this->directories->end();
+}
+
+
+bool FileSystem::is_directory(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->files->find(cleaned_path) != this->files->end();
+}
+bool FileSystem::exists(const std::string &path) const {
+  return this->is_directory(path) || this->is_file(path);
+}
+
 std::vector<std::string>* FileSystem::split_path(const std::string &path) {
   std::vector<std::string>* tokens = new std::vector<std::string>();
   std::string trimmed_path = clean_path(path);
