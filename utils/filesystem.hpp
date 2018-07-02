@@ -19,7 +19,9 @@ class FileSystem {
 
     int create(const std::string &path);
     int unlink(const std::string &path);
-    int write(const std::string &path, char *data, size_t offset, const size_t length);
+    int write(const std::string &path, const char *data, size_t offset, const size_t length);
+    size_t get_file_size(const std::string &path) const;
+    int truncate(const std::string &path, const size_t length);
     int read_data(const std::vector <std::vector<char>*>* blocks,
                   char *buffer,
                   const size_t block_index,
@@ -32,6 +34,12 @@ class FileSystem {
     bool is_file(const std::string &path) const;
     bool is_directory(const std::string &path) const;
     bool exists(const std::string &path) const;
+    /**
+     * Gives the number of entries, files and directories, at the first level of a directory
+     * @param directory Directory where the entries must be counted
+     * @return The number of entries in the directory
+     */
+    int get_number_of_entries(const std::string &directory) const;
     size_t get_block_size() const;
     void set_files();
 // Path static util functions

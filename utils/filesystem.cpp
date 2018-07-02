@@ -75,7 +75,7 @@ int FileSystem::unlink(const std::string &path) {
   return 0;
 }
 
-int FileSystem::write(const std::string &path, char *data, const size_t offset, const size_t length) {
+int FileSystem::write(const std::string &path, const char *data, const size_t offset, const size_t length) {
   std::string filename = clean_path(path);
   auto start = std::chrono::high_resolution_clock::now();
   auto entry = this->files->find(filename);
@@ -112,6 +112,65 @@ int FileSystem::write(const std::string &path, char *data, const size_t offset, 
   auto end = std::chrono::high_resolution_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   return written;
+}
+
+
+size_t FileSystem::get_file_size(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  auto entry = this->files->find(cleaned_path);
+  if (entry == this->files->end()) {
+    return -1;
+  }
+  auto blocks = entry->second;
+  if (blocks->empty()) {
+    return 0;
+  }
+  size_t size = (blocks->size() - 1) * this->block_size;
+  size += blocks->back()->size();
+  return size;
+}
+
+int FileSystem::truncate(const std::string &path, const size_t length) {
+  std::string filename = clean_path(path);
+  auto len = static_cast<unsigned int>(length);
+  auto entry = this->files->find(filename);
+  if (entry == this->files->end()) {
+    return -ENOENT;
+  }
+
+  auto blocks = entry->second;
+  auto file_size = this->get_file_size(filename);
+  if (file_size == len) {
+    return 0;
+  }
+  if (file_size < len) {
+    auto length_difference = len - blocks->size();
+    auto blocks_to_add = static_cast<size_t>(floor(length_difference / this->block_size));
+    if (blocks_to_add > 0) {
+      for (size_t i = 0; i < blocks_to_add; i++) {
+        blocks->push_back(new std::vector<char>(this->block_size));
+      }
+    }
+    auto length_of_last_block = len % this->block_size;
+    if (length_of_last_block > 0) {
+      blocks->push_back(new std::vector<char>(length_of_last_block));
+    }
+    return 0;
+  }
+  auto blocks_to_keep = static_cast<unsigned int>(ceil(len / this->block_size));
+  while (blocks_to_keep < blocks->size()) {
+    delete blocks->back();
+    blocks->pop_back();
+  }
+  if (blocks->empty()) {
+    return 0;
+  }
+
+  auto block_to_trim = blocks->back();
+  auto bytes_to_keep = len % this->block_size;
+  block_to_trim->resize(bytes_to_keep);
+
+  return 0;
 }
 
 int FileSystem::read_data(const std::vector<std::vector< char>*>* blocks,
@@ -203,6 +262,23 @@ std::vector<std::string> FileSystem::readdir(const std::string &path) const {
 
 size_t FileSystem::get_block_size() const {
   return this->block_size;
+}
+
+int FileSystem::get_number_of_entries(const std::string &directory) const {
+  std::string pathname = clean_path(directory);
+  if (!this->is_directory(pathname)) {
+    return -ENOENT;
+  }
+  size_t count = 0;
+  pathname += "/";
+  for (auto it = this->files->lower_bound(pathname); it != this->files->end(); it++) {
+    std::string filename = it->first;
+    if (filename.compare(0, pathname.size(), pathname) != 0) {
+      break;
+    }
+    count++;
+  }
+  return count;
 }
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
