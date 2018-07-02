@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 
-install_dependencies() {
+install_sgx_driver() {
     # Install SGX driver
     apt-get install --yes --quiet autoconf automake build-essential g++ git libcurl4-openssl-dev libfuse-dev libprotobuf-dev libssl-dev libtool "linux-headers-$(uname -r)" ocaml pkg-config protobuf-compiler python wget &&\
     if [[ ! -d /opt/linux-sgx-driver ]]; then
@@ -14,8 +14,9 @@ install_dependencies() {
     sh -c "cat /etc/modules | grep -Fxq isgx || echo isgx >> /etc/modules"
     /sbin/depmod
     /sbin/modprobe isgx
+}
 
-
+install_sgx_sdk_and_psw() {
     # Install SGX SDK and PSW
     apt-get update && apt-get dist-upgrade --yes --quiet && apt-get install libssl-dev libcurl4-openssl-dev libprotobuf-dev --yes --quiet
     if [[ ! -d /opt/linux-sgx ]]; then
@@ -29,9 +30,18 @@ install_dependencies() {
     make psw_install_pkg
     cd linux/installer/bin
     echo "yes" | ./sgx_linux_x64_sdk_2.1.102.43402.bin
+    if [[ -d /opt/intel/sgxpsw ]]; then
+      /opt/intel/sgxpsw/uninstall.sh
+      rm -rf /opt/intel/sgxpsw/
+    fi
     ./sgx_linux_x64_psw_2.1.102.43402.bin
     source /opt/linux-sgx/linux/installer/bin/sgxsdk/environment
     echo -e "\n##### Intel SGX SDK\nsource /opt/linux-sgx/linux/installer/bin/sgxsdk/environment\n" >> ~/.bashrc
+}
+
+install_dependencies() {
+    install_sgx_driver
+    install_sgx_sdk_and_psw
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
