@@ -2,7 +2,7 @@ FROM ubuntu:16.04
 
 RUN apt-get update &&\
     apt-get dist-upgrade --yes --quiet &&\
-    apt-get install --yes --quiet autoconf automake build-essential g++ git libcurl4-openssl-dev kmod libfuse-dev libprotobuf-dev libssl-dev libtool ocaml pkg-config protobuf-compiler python wget &&\
+    apt-get install --yes --quiet autoconf automake build-essential fuse g++ git libcurl4-openssl-dev kmod libfuse-dev libprotobuf-dev libssl-dev libtool ocaml pkg-config protobuf-compiler python wget &&\
     git clone https://github.com/intel/linux-sgx /opt/linux-sgx &&\
     cd /opt/linux-sgx &&\
     git checkout sgx_2.1.2 &&\
