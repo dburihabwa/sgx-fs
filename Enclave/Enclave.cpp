@@ -25,6 +25,7 @@ FileSystem::FileSystem(const size_t block_size) {
   this->block_size = block_size;
   this->files = new std::map<std::string, std::vector<std::vector<char>*>*>();
   this->directories = new std::map<std::string, bool>();
+  (*this->directories)[""] = true;
 }
 
 FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* restored_files) {
@@ -56,17 +57,18 @@ FileSystem::~FileSystem() {
 }
 
 int FileSystem::create(const std::string &path) {
-  std::string directory_path = get_directory(path);
-  if (this->directories->find(directory_path) != this->directories->end()) {
+  std::string cleaned_path = FileSystem::clean_path(path);
+  std::string directory_path = get_directory(cleaned_path);
+  if (this->directories->find(directory_path) == this->directories->end()) {
     return -ENOTDIR;
   }
-  if (this->directories->find(path) != this->directories->end()) {
+  if (this->directories->find(cleaned_path) != this->directories->end()) {
     return -EISDIR;
   }
-  if (this->files->find(path) != this->files->end()) {
+  if (this->files->find(cleaned_path) != this->files->end()) {
     return -EEXIST;
   }
-  (*this->files)[path] = new std::vector<std::vector<char>*>();
+  (*this->files)[cleaned_path] = new std::vector<std::vector<char>*>();
   return 0;
 }
 
@@ -217,15 +219,15 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
 
 int FileSystem::mkdir(const std::string &path) {
   string directory = FileSystem::clean_path(path);
-  if (this->directories->find(directory) != this->directories->end()) {
+  std::string parent_directory = get_directory(directory);
+  if (this->is_directory(directory)) {
     return -EISDIR;
   }
-  if (this->files->find(directory) != this->files->end()) {
+  if (this->is_file(directory)) {
     return -ENOTDIR;
   }
-  std::string parent_directory = get_directory(directory);
-  if (this->directories->find(parent_directory) != this->directories->end()) {
-    return -EEXIST;
+  if (!this->is_directory(parent_directory)) {
+    return -ENOTDIR;
   }
   (*this->directories)[directory] = true;
   return 0;
@@ -242,8 +244,6 @@ int FileSystem::rmdir(const std::string &directory) {
 std::vector<std::string> FileSystem::readdir(const std::string &path) const {
   std::string pathname = clean_path(path);
   std::vector<std::string> entries;
-  string message = "About to list content of " + pathname;
-  ocall_print(message.c_str());
   if (!pathname.empty() && this->directories->find(pathname) == this->directories->end()) {
     return entries;
   }
@@ -266,12 +266,9 @@ size_t FileSystem::get_block_size() const {
 
 int FileSystem::get_number_of_entries(const std::string &directory) const {
   std::string pathname = clean_path(directory);
-  std::string message = "getting the number of entries for " + pathname;
-  ocall_print(message.c_str());
   if (!pathname.empty() && !this->is_directory(pathname)) {
     return -ENOENT;
   }
-  ocall_print("Directory exists");
   return this->readdir(pathname).size();
 }
 
@@ -397,20 +394,12 @@ static string strip_leading_slash(string filename) {
 
 int enclave_is_file(const char* filename) {
   string cleaned_path = FileSystem::clean_path(filename);
-  string message = "Checking if " + cleaned_path + " exists";
-  ocall_print(message.c_str());
   if (FILE_SYSTEM->is_file(cleaned_path)) {
-    message = cleaned_path + " is a file";
-    ocall_print(message.c_str());
     return EEXIST;
   }
   if (cleaned_path.empty() || FILE_SYSTEM->is_directory(cleaned_path)) {
-    message = cleaned_path + " is a directory!";
-    ocall_print(message.c_str());
     return -EISDIR;
   }
-  message = cleaned_path + " is not a file nor a directory!";
-  ocall_print(message.c_str());
   return -ENOENT;
 }
 
@@ -445,27 +434,23 @@ int ramfs_trunkate(const char* path, size_t length) {
 }
 
 int ramfs_get_number_of_entries() {
-  ocall_print("Getting the number of entries");
   return FILE_SYSTEM->get_number_of_entries("/");
 }
 
-int enclave_readdir(char*entries, size_t length) {
+int enclave_readdir(const char* path, char* entries, size_t length) {
+  string directory = FileSystem::clean_path(path);
   size_t i = 0;
   const size_t offset = 256;
   size_t number_of_entries = 0;
-  ocall_print("called readdir on /");
-  std::vector<std::string> files = FILE_SYSTEM->readdir("/");
-  std::string message = "";
+  std::vector<std::string> files = FILE_SYSTEM->readdir(directory);
   for (auto it = files.begin();
        it != files.end() && i < length;
        it++, number_of_entries++) {
     string name = (*it);
-    message += name + '\n';
     memcpy(entries + i, name.c_str(), name.length());
     entries[i + name.length()] = 0x1C;
     i += name.length() + 1;
   }
-  ocall_print(message.c_str());
   return number_of_entries;
 }
 

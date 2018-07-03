@@ -88,26 +88,25 @@ static std::vector<std::string> tokenize(const string list_of_entries, const cha
 
 static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
-  cout << "readdir(" << path << ")" << endl;
-  if (strcmp(path, "/") != 0) {
-    cerr << "sgxfs_readdir(" << path << "): Only / allowed" << endl;
+  int ret;
+  enclave_is_file(ENCLAVE_ID, &ret, path);
+  if (ret == -ENOENT) {
     return -ENOENT;
   }
+  if (ret == EEXIST) {
+    return -ENOTDIR;
+  }
+
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
 
-
   int number_of_entries;
-  cout << "readdir(" << path << ")" << endl;
-  sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
-  cout << "readdir(" << path << ")" << endl;
+  ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
   const size_t step = 256;
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
   int size;
-  cout << "POUET!" << endl;
-  status = enclave_readdir(ENCLAVE_ID, &size, entries, buffer_length);
-  cout << "POUET!" << endl;
+  enclave_readdir(ENCLAVE_ID, &size, path, entries, buffer_length);
   vector<string> filenames = tokenize(string(entries), 0x1C);
   for (auto it = filenames.begin(); it != filenames.end(); it++) {
     filler(buf, it->c_str(), NULL, 0);
@@ -228,7 +227,6 @@ int sgxfs_mknod(const char *path, mode_t mode, dev_t dev) {
 int sgxfs_mkdir(const char* pathname, mode_t unused_mode) {
   int retval;
   enclave_mkdir(ENCLAVE_ID, &retval, pathname);
-  cout << "mkdir -> " << retval << endl;
   return retval;
 }
 int sgxfs_rmdir(const char *) {
@@ -314,7 +312,7 @@ static void dump_fs(const string &path) {
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
   int size;
-  status = enclave_readdir(ENCLAVE_ID, &size, entries, buffer_length);
+  status = enclave_readdir(ENCLAVE_ID, &size, "/", entries, buffer_length);
 
   for (size_t i = 0; i < buffer_length; i += step) {
     char* entry = entries + (i * sizeof(char));
@@ -337,6 +335,7 @@ static void dump_fs(const string &path) {
 }
 
 void sgxfs_destroy(void* private_data) {
+  // FIXME(dburihabwa) segmentation fault on call to destroy
   Logger init_log("sgxfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
   dump_fs("sgxfs_dump");
