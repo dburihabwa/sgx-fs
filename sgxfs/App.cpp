@@ -46,23 +46,20 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
   stbuf->st_gid = getgid();
   stbuf->st_atime = stbuf->st_mtime = stbuf->st_ctime = time(NULL);
 
-  if (filename == "/") {
+  int found;
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, stripped_slash.c_str());
+
+  if (found == EEXIST) {
+    stbuf->st_mode = S_IFREG | 0777;
+    stbuf->st_nlink = 1;
+    int file_size;
+    sgx_status_t status = ramfs_get_size(ENCLAVE_ID, &file_size, stripped_slash.c_str());
+    stbuf->st_size = file_size;
+  } else if (found == -EISDIR) {
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_nlink = 2;
-
   } else {
-    int found;
-    sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, stripped_slash.c_str());
-    if (found != -ENOENT) {
-      stbuf->st_mode = S_IFREG | 0777;
-      stbuf->st_nlink = 1;
-      int file_size;
-      sgx_status_t status = ramfs_get_size(ENCLAVE_ID, &file_size, stripped_slash.c_str());
-      stbuf->st_size = file_size;
-
-    } else {
-      res = -ENOENT;
-    }
+    res = -ENOENT;
   }
   return res;
 }
@@ -109,7 +106,7 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   char *entries = new char[buffer_length];
   int size;
   cout << "POUET!" << endl;
-  status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
+  status = enclave_readdir(ENCLAVE_ID, &size, entries, buffer_length);
   cout << "POUET!" << endl;
   vector<string> filenames = tokenize(string(entries), 0x1C);
   for (auto it = filenames.begin(); it != filenames.end(); it++) {
@@ -124,7 +121,7 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 static int sgxfs_open(const char *path, struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
   int found;
-  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
 
   if (found == -ENOENT) {
     cerr << "sgxfs_open(" << filename << "): Not found" << endl;
@@ -139,7 +136,7 @@ static int sgxfs_read(const char *path, char *buf, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
 
   if (found == -ENOENT) {
     cerr << "[sgxfs_read] " << filename << ": Not found" << endl;
@@ -156,7 +153,7 @@ int sgxfs_write(const char *path, const char *data, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
   if (found == -ENOENT) {
     cerr << "[sgxfs_write] " << filename << ": Not found" << endl;
     return -ENOENT;
@@ -179,7 +176,7 @@ int sgxfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
   if (found != -ENOENT) {
     cerr << "sgxfs_create(" << filename << "): Already exists" << endl;
     return -EEXIST;
@@ -212,7 +209,7 @@ int sgxfs_truncate(const char *path, off_t length) {
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
   if (found == -ENOENT) {
     cerr << "sgxfs_truncate(" << filename << "): Not found" << endl;
     return -ENOENT;
@@ -317,7 +314,7 @@ static void dump_fs(const string &path) {
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
   int size;
-  status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
+  status = enclave_readdir(ENCLAVE_ID, &size, entries, buffer_length);
 
   for (size_t i = 0; i < buffer_length; i += step) {
     char* entry = entries + (i * sizeof(char));

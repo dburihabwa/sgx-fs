@@ -212,7 +212,8 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
   return read;
 }
 
-int FileSystem::mkdir(const std::string &directory) {
+int FileSystem::mkdir(const std::string &path) {
+  string directory = FileSystem::clean_path(path);
   if (this->directories->find(directory) != this->directories->end()) {
     return -EISDIR;
   }

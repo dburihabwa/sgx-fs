@@ -215,7 +215,8 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
   return read;
 }
 
-int FileSystem::mkdir(const std::string &directory) {
+int FileSystem::mkdir(const std::string &path) {
+  string directory = FileSystem::clean_path(path);
   if (this->directories->find(directory) != this->directories->end()) {
     return -EISDIR;
   }
@@ -224,7 +225,7 @@ int FileSystem::mkdir(const std::string &directory) {
   }
   std::string parent_directory = get_directory(directory);
   if (this->directories->find(parent_directory) != this->directories->end()) {
-    return -ENOTDIR;
+    return -EEXIST;
   }
   (*this->directories)[directory] = true;
   return 0;
@@ -394,16 +395,21 @@ static string strip_leading_slash(string filename) {
   return filename;
 }
 
-int enclave_file_exists(const char* filename) {
+int enclave_is_file(const char* filename) {
   string cleaned_path = FileSystem::clean_path(filename);
   string message = "Checking if " + cleaned_path + " exists";
   ocall_print(message.c_str());
   if (FILE_SYSTEM->is_file(cleaned_path)) {
-    message = cleaned_path + " was found!";
+    message = cleaned_path + " is a file";
     ocall_print(message.c_str());
-    return 0;
+    return EEXIST;
   }
-  message = cleaned_path + " was NOT found!";
+  if (cleaned_path.empty() || FILE_SYSTEM->is_directory(cleaned_path)) {
+    message = cleaned_path + " is a directory!";
+    ocall_print(message.c_str());
+    return -EISDIR;
+  }
+  message = cleaned_path + " is not a file nor a directory!";
   ocall_print(message.c_str());
   return -ENOENT;
 }
@@ -443,7 +449,7 @@ int ramfs_get_number_of_entries() {
   return FILE_SYSTEM->get_number_of_entries("/");
 }
 
-int ramfs_list_entries(char*entries, size_t length) {
+int enclave_readdir(char*entries, size_t length) {
   size_t i = 0;
   const size_t offset = 256;
   size_t number_of_entries = 0;
