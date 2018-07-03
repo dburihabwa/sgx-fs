@@ -18,6 +18,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "Enclave_u.h"
 #include "./sgx_urts.h"
@@ -66,8 +67,31 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
   return res;
 }
 
+static std::vector<std::string> tokenize(const string list_of_entries, const char separator) {
+  string entries(list_of_entries);
+  std::vector<std::string> filenames;
+  size_t pos = 0;
+  size_t found = string::npos;
+  while (true) {
+    found = entries.find(separator, pos);
+    if (found == string::npos) {
+      break;
+    }
+    size_t length = found - pos;
+    if (length == 0) {
+      pos = found + 1;
+      continue;
+    }
+    string filename = entries.substr(pos, length);
+    filenames.push_back(filename);
+    pos = found + 1;
+  }
+  return filenames;
+}
+
 static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
+  cout << "readdir(" << path << ")" << endl;
   if (strcmp(path, "/") != 0) {
     cerr << "sgxfs_readdir(" << path << "): Only / allowed" << endl;
     return -ENOENT;
@@ -75,17 +99,21 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
 
+
   int number_of_entries;
+  cout << "readdir(" << path << ")" << endl;
   sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
+  cout << "readdir(" << path << ")" << endl;
   const size_t step = 256;
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
   int size;
+  cout << "POUET!" << endl;
   status = ramfs_list_entries(ENCLAVE_ID, &size, entries, buffer_length);
-
-  for (size_t i = 0; i < buffer_length; i += step) {
-    char* entry = entries + (i * sizeof(char));
-    filler(buf, entry, NULL, 0);
+  cout << "POUET!" << endl;
+  vector<string> filenames = tokenize(string(entries), 0x1C);
+  for (auto it = filenames.begin(); it != filenames.end(); it++) {
+    filler(buf, it->c_str(), NULL, 0);
   }
   if (entries != NULL) {
     delete [] entries;
@@ -200,9 +228,11 @@ int sgxfs_mknod(const char *path, mode_t mode, dev_t dev) {
   cout << "sgxfs_mknod not implemented" << endl;
   return -EINVAL;
 }
-int sgxfs_mkdir(const char *, mode_t) {
-  cout << "sgxfs_mkdir not implemented" << endl;
-  return -EINVAL;
+int sgxfs_mkdir(const char* pathname, mode_t unused_mode) {
+  int retval;
+  enclave_mkdir(ENCLAVE_ID, &retval, pathname);
+  cout << "mkdir -> " << retval << endl;
+  return retval;
 }
 int sgxfs_rmdir(const char *) {
   cout << "sgxfs_rmdir not implemented" << endl;

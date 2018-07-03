@@ -60,7 +60,7 @@ int FileSystem::create(const std::string &path) {
   if (this->directories->find(directory_path) != this->directories->end()) {
     return -ENOTDIR;
   }
-  if (this->directories->find(path) == this->directories->end()) {
+  if (this->directories->find(path) != this->directories->end()) {
     return -EISDIR;
   }
   if (this->files->find(path) != this->files->end()) {
@@ -85,7 +85,7 @@ int FileSystem::unlink(const std::string &path) {
   return 0;
 }
 
-int FileSystem::write(const std::string &path, char *data, const size_t offset, const size_t length) {
+int FileSystem::write(const std::string &path, const char *data, const size_t offset, const size_t length) {
   std::string filename = clean_path(path);
   auto entry = this->files->find(filename);
   if (entry == this->files->end()) {
@@ -119,6 +119,64 @@ int FileSystem::write(const std::string &path, char *data, const size_t offset, 
     written += bytes_to_write;
   }
   return written;
+}
+
+size_t FileSystem::get_file_size(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  auto entry = this->files->find(cleaned_path);
+  if (entry == this->files->end()) {
+    return -1;
+  }
+  auto blocks = entry->second;
+  if (blocks->empty()) {
+    return 0;
+  }
+  size_t size = (blocks->size() - 1) * this->block_size;
+  size += blocks->back()->size();
+  return size;
+}
+
+int FileSystem::truncate(const std::string &path, const size_t length) {
+  std::string filename = clean_path(path);
+  auto len = static_cast<unsigned int>(length);
+  auto entry = this->files->find(filename);
+  if (entry == this->files->end()) {
+    return -ENOENT;
+  }
+
+  auto blocks = entry->second;
+  auto file_size = this->get_file_size(filename);
+  if (file_size == len) {
+    return 0;
+  }
+  if (file_size < len) {
+    auto length_difference = len - blocks->size();
+    auto blocks_to_add = static_cast<size_t>(floor(length_difference / this->block_size));
+    if (blocks_to_add > 0) {
+      for (size_t i = 0; i < blocks_to_add; i++) {
+        blocks->push_back(new std::vector<char>(this->block_size));
+      }
+    }
+    auto length_of_last_block = len % this->block_size;
+    if (length_of_last_block > 0) {
+      blocks->push_back(new std::vector<char>(length_of_last_block));
+    }
+    return 0;
+  }
+  auto blocks_to_keep = static_cast<unsigned int>(ceil(len / this->block_size));
+  while (blocks_to_keep < blocks->size()) {
+    delete blocks->back();
+    blocks->pop_back();
+  }
+  if (blocks->empty()) {
+    return 0;
+  }
+
+  auto block_to_trim = blocks->back();
+  auto bytes_to_keep = len % this->block_size;
+  block_to_trim->resize(bytes_to_keep);
+
+  return 0;
 }
 
 int FileSystem::read_data(const std::vector<std::vector< char>*>* blocks,
@@ -183,13 +241,9 @@ int FileSystem::rmdir(const std::string &directory) {
 std::vector<std::string> FileSystem::readdir(const std::string &path) const {
   std::string pathname = clean_path(path);
   std::vector<std::string> entries;
-  if (pathname.empty()) {
-    return entries;
-  }
-  if (this->directories->find(pathname) != this->directories->end()) {
-    return entries;
-  }
-  if (this->directories->find(pathname) == this->directories->end()) {
+  string message = "About to list content of " + pathname;
+  ocall_print(message.c_str());
+  if (!pathname.empty() && this->directories->find(pathname) == this->directories->end()) {
     return entries;
   }
   for (auto it = this->directories->begin(); it != this->directories->end(); it++) {
@@ -207,6 +261,17 @@ std::vector<std::string> FileSystem::readdir(const std::string &path) const {
 
 size_t FileSystem::get_block_size() const {
   return this->block_size;
+}
+
+int FileSystem::get_number_of_entries(const std::string &directory) const {
+  std::string pathname = clean_path(directory);
+  std::string message = "getting the number of entries for " + pathname;
+  ocall_print(message.c_str());
+  if (!pathname.empty() && !this->is_directory(pathname)) {
+    return -ENOENT;
+  }
+  ocall_print("Directory exists");
+  return this->readdir(pathname).size();
 }
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
@@ -300,8 +365,26 @@ std::vector<std::string>* FileSystem::split_path(const std::string &path) {
   return tokens;
 }
 
+bool FileSystem::is_file(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->directories->find(cleaned_path) != this->directories->end();
+}
 
-static map<string, vector<char>>* files;
+
+bool FileSystem::is_directory(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->files->find(cleaned_path) != this->files->end();
+}
+
+bool FileSystem::exists(const std::string &path) const {
+  string cleaned_path = clean_path(path);
+  if (this->directories->find(cleaned_path) != this->directories->end() ||
+      this->files->find(cleaned_path) != this->files->end()) {
+    return true;
+  }
+  return false;
+}
+
 static FileSystem* FILE_SYSTEM;
 
 static string strip_leading_slash(string filename) {
@@ -312,94 +395,74 @@ static string strip_leading_slash(string filename) {
 }
 
 int ramfs_file_exists(const char* filename) {
-  string name(filename);
-  return files->find(filename) != files->end() ? 1 : 0;
+  if (FILE_SYSTEM->is_file(filename)) {
+    return 1;
+  }
+  return 0;
 }
 
 int ramfs_get(const char* filename,
               long offset,
               size_t size,
               char* buffer) {
-  vector<char> &file = (*files)[filename];
-
-  size_t len = file.size();
-  if (offset < len) {
-    if (offset + size > len) {
-      size = len - offset;
-    }
-    for (size_t i = 0; i < size; i++) {
-      buffer[i] = file[offset + i];
-    }
-    return size;
-  }
-  return -EINVAL;
+  std::string cleaned_path = FileSystem::clean_path(filename);
+  return FILE_SYSTEM->read(cleaned_path, buffer, offset, size);
 }
 
 int ramfs_put(const char *filename,
               long offset,
               size_t size,
               const char *data) {
-  string path = strip_leading_slash(filename);
-  if (!ramfs_file_exists(path.c_str())) {
-    return -ENOENT;
-  }
-  vector<char> *file = &((*files)[filename]);
-  size_t i = 0;
-  if (offset < file->size()) {
-    auto room_for = file->size() - offset;
-    for (; i < room_for; i++) {
-      (*file)[offset + i] = data[i];
-    }
-  }
-  for (; i < size; i++) {
-     file->push_back(data[i]);
-  }
-  return size;
+  std::string cleaned_path = FileSystem::clean_path(filename);
+  return FILE_SYSTEM->write(cleaned_path, data, offset, size);
 }
 
 int ramfs_get_size(const char *pathname) {
-  if (!ramfs_file_exists(pathname)) {
-    return -1;
+  if (!FILE_SYSTEM->is_file(pathname)) {
+    return -ENOENT;
   }
-  return (*files)[strip_leading_slash(pathname)].size();
+  return FILE_SYSTEM->get_file_size(pathname);
 }
 
 int ramfs_trunkate(const char* path, size_t length) {
-  if (!ramfs_file_exists(path)) {
+  if (!FILE_SYSTEM->is_file(path)) {
     return -ENOENT;
   }
-  string filename = strip_leading_slash(path);
-  vector<char> &file = (*files)[filename];
-  file.resize(length);
-  return 0;
+  return FILE_SYSTEM->truncate(path, length);
 }
 
 int ramfs_get_number_of_entries() {
-  return files->size();
+  ocall_print("Getting the number of entries");
+  return FILE_SYSTEM->get_number_of_entries("/");
 }
 
 int ramfs_list_entries(char*entries, size_t length) {
   size_t i = 0;
   const size_t offset = 256;
   size_t number_of_entries = 0;
-  for (auto it = files->begin(); it != files->end() && i < length; it++, i += offset, number_of_entries++) {
-    string name = it->first;
-    //memcpy seems to do the trick bug str::cpy fails miserably here
+  ocall_print("called readdir on /");
+  std::vector<std::string> files = FILE_SYSTEM->readdir("/");
+  std::string message = "";
+  for (auto it = files.begin();
+       it != files.end() && i < length;
+       it++, number_of_entries++) {
+    string name = (*it);
+    message += name + '\n';
     memcpy(entries + i, name.c_str(), name.length());
-    entries[i + name.length()] = '\0';
+    entries[i + name.length()] = 0x1C;
+    i += name.length() + 1;
   }
+  ocall_print(message.c_str());
   return number_of_entries;
 }
 
 int ramfs_create_file(const char *path) {
-  string filename = strip_leading_slash(path);
-  (*files)[filename] = vector<char>();
-  return 0;
+  std::string pathname = FileSystem::clean_path(path);
+  return FILE_SYSTEM->create(pathname);
 }
 
 int ramfs_delete_file(const char *pathname) {
-  files->erase(strip_leading_slash(pathname));
-  return 0;
+  return FILE_SYSTEM->unlink(FileSystem::clean_path(pathname));
 }
 
 sgx_status_t ramfs_encrypt(const char* filename,
@@ -425,19 +488,14 @@ sgx_status_t ramfs_decrypt(const char* filename,
 int sgxfs_dump(const char* pathname,
                sgx_sealed_data_t* sealed_data,
                size_t sealed_size) {
-  string path(pathname);
-  auto entry = files->find(path);
-  if (entry == files->end()) {
+  string path = FileSystem::clean_path(pathname);
+  if (!FILE_SYSTEM->is_file(path)) {
     return -ENOENT;
   }
-  auto bytes = entry->second;
-  size_t data_size = bytes.size();
-  sealed_size = sizeof(sgx_sealed_data_t) + data_size;
+  size_t data_size = FILE_SYSTEM->get_file_size(path);
   uint8_t* buffer = new uint8_t[data_size];
-  // TODO(dburihabwa) Replace with a call to memcpy or pass bytes.data() c++11
-  for (size_t i = 0; i < data_size; i++) {
-    buffer[i] = bytes[i];
-  }
+  FILE_SYSTEM->read(pathname, reinterpret_cast<char*>(buffer), 0, data_size);
+  sealed_size = sizeof(sgx_sealed_data_t) + data_size;
   sgx_status_t ret = sgx_seal_data(0, NULL, data_size, buffer, sealed_size, sealed_data);
   delete [] buffer;
   return ret;
@@ -446,32 +504,28 @@ int sgxfs_dump(const char* pathname,
 int sgxfs_restore(const char* pathname,
                   const sgx_sealed_data_t* sealed_data,
                   size_t sealed_size) {
-  string path(pathname);
-  auto entry = files->find(path);
-  if (entry != files->end()) {
+  string path = FileSystem::clean_path(pathname);
+  if (!FILE_SYSTEM->is_file(path)) {
     return 0;
   }
+  FILE_SYSTEM->create(path);
   uint32_t data_size = sealed_data->aes_data.payload_size;
   uint8_t* plaintext = new uint8_t[data_size];
   sgx_status_t ret = sgx_unseal_data(sealed_data, NULL, NULL, plaintext, &data_size);
-  vector<char> bytes(data_size);
-  for (size_t i = 0; i < data_size; i++) {
-    bytes[i] = plaintext[i];
-  }
-  (*files)[path] = bytes;
+  FILE_SYSTEM->write(path, (const char*) plaintext, 0, data_size);
   return ret;
 }
 
+int enclave_mkdir(const char* pathname) {
+  return FILE_SYSTEM->mkdir(string(pathname));
+}
+
 int init_filesystem() {
-  files = new map<string, vector<char>>();
   FILE_SYSTEM = new FileSystem(FileSystem::DEFAULT_BLOCK_SIZE);
   return 0;
 }
 
 int destroy_filesystem() {
-  if (files != NULL) {
-    delete files;
-  }
   if (FILE_SYSTEM != NULL) {
     delete FILE_SYSTEM;
   }
