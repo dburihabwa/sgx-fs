@@ -52,8 +52,8 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
 
   } else {
     int found;
-    sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, stripped_slash.c_str());
-    if (found) {
+    sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, stripped_slash.c_str());
+    if (found != -ENOENT) {
       stbuf->st_mode = S_IFREG | 0777;
       stbuf->st_nlink = 1;
       int file_size;
@@ -124,9 +124,9 @@ static int sgxfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 static int sgxfs_open(const char *path, struct fuse_file_info *fi) {
   string filename = strip_leading_slash(path);
   int found;
-  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
 
-  if (!found) {
+  if (found == -ENOENT) {
     cerr << "sgxfs_open(" << filename << "): Not found" << endl;
     return -ENOENT;
   }
@@ -139,9 +139,9 @@ static int sgxfs_read(const char *path, char *buf, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
 
-  if (!found) {
+  if (found == -ENOENT) {
     cerr << "[sgxfs_read] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
@@ -156,8 +156,8 @@ int sgxfs_write(const char *path, const char *data, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
-  if (!found) {
+  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found == -ENOENT) {
     cerr << "[sgxfs_write] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
@@ -179,8 +179,8 @@ int sgxfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
-  if (found) {
+  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found != -ENOENT) {
     cerr << "sgxfs_create(" << filename << "): Already exists" << endl;
     return -EEXIST;
   }
@@ -212,8 +212,8 @@ int sgxfs_truncate(const char *path, off_t length) {
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = ramfs_file_exists(ENCLAVE_ID, &found, filename.c_str());
-  if (!found) {
+  sgx_status_t status = enclave_file_exists(ENCLAVE_ID, &found, filename.c_str());
+  if (found == -ENOENT) {
     cerr << "sgxfs_truncate(" << filename << "): Not found" << endl;
     return -ENOENT;
   }

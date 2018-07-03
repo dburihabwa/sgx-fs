@@ -367,13 +367,13 @@ std::vector<std::string>* FileSystem::split_path(const std::string &path) {
 
 bool FileSystem::is_file(const std::string &path) const {
   std::string cleaned_path = clean_path(path);
-  return this->directories->find(cleaned_path) != this->directories->end();
+  return this->files->find(cleaned_path) != this->files->end();
 }
 
 
 bool FileSystem::is_directory(const std::string &path) const {
   std::string cleaned_path = clean_path(path);
-  return this->files->find(cleaned_path) != this->files->end();
+  return this->directories->find(cleaned_path) != this->directories->end();
 }
 
 bool FileSystem::exists(const std::string &path) const {
@@ -394,11 +394,18 @@ static string strip_leading_slash(string filename) {
   return filename;
 }
 
-int ramfs_file_exists(const char* filename) {
-  if (FILE_SYSTEM->is_file(filename)) {
-    return 1;
+int enclave_file_exists(const char* filename) {
+  string cleaned_path = FileSystem::clean_path(filename);
+  string message = "Checking if " + cleaned_path + " exists";
+  ocall_print(message.c_str());
+  if (FILE_SYSTEM->is_file(cleaned_path)) {
+    message = cleaned_path + " was found!";
+    ocall_print(message.c_str());
+    return 0;
   }
-  return 0;
+  message = cleaned_path + " was NOT found!";
+  ocall_print(message.c_str());
+  return -ENOENT;
 }
 
 int ramfs_get(const char* filename,

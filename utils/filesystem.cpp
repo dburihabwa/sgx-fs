@@ -50,7 +50,7 @@ int FileSystem::create(const std::string &path) {
   if (this->directories->find(directory_path) != this->directories->end()) {
     return -ENOTDIR;
   }
-  if (this->directories->find(path) == this->directories->end()) {
+  if (this->directories->find(path) != this->directories->end()) {
     return -EISDIR;
   }
   if (this->files->find(path) != this->files->end()) {
@@ -363,14 +363,14 @@ bool FileSystem::is_in_directory(const std::string &directory, const std::string
 
 bool FileSystem::is_file(const std::string &path) const {
   std::string cleaned_path = clean_path(path);
-  return this->directories->find(cleaned_path) != this->directories->end();
+  return this->files->find(cleaned_path) != this->files->end();
 }
-
 
 bool FileSystem::is_directory(const std::string &path) const {
   std::string cleaned_path = clean_path(path);
-  return this->files->find(cleaned_path) != this->files->end();
+  return this->directories->find(cleaned_path) != this->directories->end();
 }
+
 bool FileSystem::exists(const std::string &path) const {
   return this->is_directory(path) || this->is_file(path);
 }

@@ -6,7 +6,7 @@ enclave {
         /* define ECALLs here. */
         public int init_filesystem();
         public int destroy_filesystem();
-        public int ramfs_file_exists([in, string] const char* filename);
+        public int enclave_file_exists([in, string] const char* filename);
         public int ramfs_get([in, string] const char* filename, long offset, size_t size, [out, size=size] char* data);
         public int ramfs_put([in, string] const char* filename, long offset, size_t size, [in, size=size] const char* data);
         public sgx_status_t ramfs_encrypt([in, string] const char* filename, [in, size=size] uint8_t* plaintext, size_t size, [out, size=sealed_size] sgx_sealed_data_t* encrypted, size_t sealed_size);
