@@ -218,7 +218,7 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
 }
 
 int FileSystem::mkdir(const std::string &path) {
-  string directory = FileSystem::clean_path(path);
+  std::string directory = FileSystem::clean_path(path);
   std::string parent_directory = get_directory(directory);
   if (this->is_directory(directory)) {
     return -EISDIR;
@@ -244,8 +244,9 @@ int FileSystem::rmdir(const std::string &directory) {
 std::vector<std::string> FileSystem::readdir(const std::string &path) const {
   std::string pathname = clean_path(path);
   std::vector<std::string> entries;
-  if (!pathname.empty() && this->directories->find(pathname) == this->directories->end()) {
-    return entries;
+  if (this->directories->find(pathname) == this->directories->end()) {
+    std::string error_message = pathname + " is not a directory";
+    throw std::runtime_error(error_message);
   }
   for (auto it = this->directories->begin(); it != this->directories->end(); it++) {
     if (is_in_directory(pathname, it->first)) {
@@ -269,7 +270,12 @@ int FileSystem::get_number_of_entries(const std::string &directory) const {
   if (!pathname.empty() && !this->is_directory(pathname)) {
     return -ENOENT;
   }
-  return this->readdir(pathname).size();
+  try {
+    auto entries = this->readdir(pathname);
+    return entries.size();
+  } catch (const std::runtime_error&) {
+    return -ENOENT;
+  }
 }
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
@@ -442,7 +448,12 @@ int enclave_readdir(const char* path, char* entries, size_t length) {
   size_t i = 0;
   const size_t offset = 256;
   size_t number_of_entries = 0;
-  std::vector<std::string> files = FILE_SYSTEM->readdir(directory);
+  std::vector<std::string> files;
+  try {
+    files = FILE_SYSTEM->readdir(directory);
+  } catch (const std::exception&) {
+    return -ENOENT;
+  }
   for (auto it = files.begin();
        it != files.end() && i < length;
        it++, number_of_entries++) {

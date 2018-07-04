@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstring>
 
-#include <chrono>
 #include <map>
 #include <string>
 #include <vector>
@@ -14,6 +13,7 @@ FileSystem::FileSystem(const size_t block_size) {
   this->block_size = block_size;
   this->files = new std::map<std::string, std::vector<std::vector<char>*>*>();
   this->directories = new std::map<std::string, bool>();
+  (*this->directories)[""] = true;
 }
 
 
@@ -46,17 +46,18 @@ FileSystem::~FileSystem() {
 }
 
 int FileSystem::create(const std::string &path) {
-  std::string directory_path = get_directory(path);
-  if (this->directories->find(directory_path) != this->directories->end()) {
+  std::string cleaned_path = FileSystem::clean_path(path);
+  std::string directory_path = get_directory(cleaned_path);
+  if (this->directories->find(directory_path) == this->directories->end()) {
     return -ENOTDIR;
   }
-  if (this->directories->find(path) != this->directories->end()) {
+  if (this->directories->find(cleaned_path) != this->directories->end()) {
     return -EISDIR;
   }
-  if (this->files->find(path) != this->files->end()) {
+  if (this->files->find(cleaned_path) != this->files->end()) {
     return -EEXIST;
   }
-  (*this->files)[path] = new std::vector<std::vector<char>*>();
+  (*this->files)[cleaned_path] = new std::vector<std::vector<char>*>();
   return 0;
 }
 
@@ -77,7 +78,6 @@ int FileSystem::unlink(const std::string &path) {
 
 int FileSystem::write(const std::string &path, const char *data, const size_t offset, const size_t length) {
   std::string filename = clean_path(path);
-  auto start = std::chrono::high_resolution_clock::now();
   auto entry = this->files->find(filename);
   if (entry == this->files->end()) {
       return -ENOENT;
@@ -109,8 +109,6 @@ int FileSystem::write(const std::string &path, const char *data, const size_t of
     blocks->push_back(block);
     written += bytes_to_write;
   }
-  auto end = std::chrono::high_resolution_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   return written;
 }
 
@@ -196,7 +194,6 @@ int FileSystem::read_data(const std::vector<std::vector< char>*>* blocks,
 
 int FileSystem::read(const std::string &path, char *data, const size_t offset, const size_t length) {
   std::string filename = clean_path(path);
-  auto start = std::chrono::high_resolution_clock::now();
   auto entry = this->files->find(filename);
   if (entry == this->files->end()) {
     return -ENOENT;
@@ -207,21 +204,19 @@ int FileSystem::read(const std::string &path, char *data, const size_t offset, c
     return 0;
   }
   int read = this->read_data(blocks, data, block_index, offset, length);
-  auto end = std::chrono::high_resolution_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   return read;
 }
 
 int FileSystem::mkdir(const std::string &path) {
-  string directory = FileSystem::clean_path(path);
-  if (this->directories->find(directory) != this->directories->end()) {
+  std::string directory = FileSystem::clean_path(path);
+  std::string parent_directory = get_directory(directory);
+  if (this->is_directory(directory)) {
     return -EISDIR;
   }
-  if (this->files->find(directory) != this->files->end()) {
+  if (this->is_file(directory)) {
     return -ENOTDIR;
   }
-  std::string parent_directory = get_directory(directory);
-  if (this->directories->find(parent_directory) != this->directories->end()) {
+  if (!this->is_directory(parent_directory)) {
     return -ENOTDIR;
   }
   (*this->directories)[directory] = true;
@@ -239,14 +234,9 @@ int FileSystem::rmdir(const std::string &directory) {
 std::vector<std::string> FileSystem::readdir(const std::string &path) const {
   std::string pathname = clean_path(path);
   std::vector<std::string> entries;
-  if (pathname.empty()) {
-    return entries;
-  }
-  if (this->directories->find(pathname) != this->directories->end()) {
-    return entries;
-  }
   if (this->directories->find(pathname) == this->directories->end()) {
-    return entries;
+    std::string error_message = pathname + " is not a directory";
+    throw std::runtime_error(error_message);
   }
   for (auto it = this->directories->begin(); it != this->directories->end(); it++) {
     if (is_in_directory(pathname, it->first)) {
@@ -267,19 +257,10 @@ size_t FileSystem::get_block_size() const {
 
 int FileSystem::get_number_of_entries(const std::string &directory) const {
   std::string pathname = clean_path(directory);
-  if (!this->is_directory(pathname)) {
+  if (!pathname.empty() && !this->is_directory(pathname)) {
     return -ENOENT;
   }
-  size_t count = 0;
-  pathname += "/";
-  for (auto it = this->files->lower_bound(pathname); it != this->files->end(); it++) {
-    std::string filename = it->first;
-    if (filename.compare(0, pathname.size(), pathname) != 0) {
-      break;
-    }
-    count++;
-  }
-  return count;
+  return this->readdir(pathname).size();
 }
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
