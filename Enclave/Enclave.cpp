@@ -15,8 +15,6 @@
 #include "Enclave_t.h"
 #include "../utils/filesystem.hpp"
 
-using namespace std;
-
 #ifndef PATH_MAX
   #define PATH_MAX 1024
 #endif /* PATH_MAX */
@@ -381,7 +379,7 @@ bool FileSystem::is_directory(const std::string &path) const {
 }
 
 bool FileSystem::exists(const std::string &path) const {
-  string cleaned_path = clean_path(path);
+  std::string cleaned_path = clean_path(path);
   if (this->directories->find(cleaned_path) != this->directories->end() ||
       this->files->find(cleaned_path) != this->files->end()) {
     return true;
@@ -391,15 +389,15 @@ bool FileSystem::exists(const std::string &path) const {
 
 static FileSystem* FILE_SYSTEM;
 
-static string strip_leading_slash(string filename) {
+static std::string strip_leading_slash(std::string filename) {
   if (filename.size() > 0 && filename[0] == '/') {
-    return filename.substr(1, string::npos);
+    return filename.substr(1, std::string::npos);
   }
   return filename;
 }
 
 int enclave_is_file(const char* filename) {
-  string cleaned_path = FileSystem::clean_path(filename);
+  std::string cleaned_path = FileSystem::clean_path(filename);
   if (FILE_SYSTEM->is_file(cleaned_path)) {
     return EEXIST;
   }
@@ -410,7 +408,7 @@ int enclave_is_file(const char* filename) {
 }
 
 int ramfs_get(const char* filename,
-              long offset,
+              int64_t offset,
               size_t size,
               char* buffer) {
   std::string cleaned_path = FileSystem::clean_path(filename);
@@ -418,7 +416,7 @@ int ramfs_get(const char* filename,
 }
 
 int ramfs_put(const char *filename,
-              long offset,
+              int64_t offset,
               size_t size,
               const char *data) {
   std::string cleaned_path = FileSystem::clean_path(filename);
@@ -444,7 +442,7 @@ int ramfs_get_number_of_entries() {
 }
 
 int enclave_readdir(const char* path, char* entries, size_t length) {
-  string directory = FileSystem::clean_path(path);
+  std::string directory = FileSystem::clean_path(path);
   std::vector<std::string> files;
   try {
     files = FILE_SYSTEM->readdir(directory);
@@ -456,7 +454,7 @@ int enclave_readdir(const char* path, char* entries, size_t length) {
   for (auto it = files.begin();
        it != files.end() && i < length;
        it++, number_of_entries++) {
-    string name = (*it);
+    std::string name = (*it);
     memcpy(entries + i, name.c_str(), name.length());
     entries[i + name.length()] = 0x1C;
     i += name.length() + 1;
@@ -488,7 +486,7 @@ sgx_status_t ramfs_decrypt(const char* filename,
                   uint8_t* plaintext,
                   size_t size) {
   uint32_t data_size = size;
-  sgx_status_t status = sgx_unseal_data(encrypted, NULL, NULL, (uint8_t*) plaintext, &data_size);
+  sgx_status_t status = sgx_unseal_data(encrypted, NULL, NULL, reinterpret_cast<uint8_t*>(plaintext), &data_size);
   return status;
 }
 
@@ -496,7 +494,7 @@ sgx_status_t ramfs_decrypt(const char* filename,
 int sgxfs_dump(const char* pathname,
                sgx_sealed_data_t* sealed_data,
                size_t sealed_size) {
-  string path = FileSystem::clean_path(pathname);
+  std::string path = FileSystem::clean_path(pathname);
   if (!FILE_SYSTEM->is_file(path)) {
     return -ENOENT;
   }
@@ -512,7 +510,7 @@ int sgxfs_dump(const char* pathname,
 int sgxfs_restore(const char* pathname,
                   const sgx_sealed_data_t* sealed_data,
                   size_t sealed_size) {
-  string path = FileSystem::clean_path(pathname);
+  std::string path = FileSystem::clean_path(pathname);
   if (!FILE_SYSTEM->is_file(path)) {
     return 0;
   }
@@ -525,7 +523,7 @@ int sgxfs_restore(const char* pathname,
 }
 
 int enclave_mkdir(const char* pathname) {
-  return FILE_SYSTEM->mkdir(string(pathname));
+  return FILE_SYSTEM->mkdir(std::string(pathname));
 }
 
 int init_filesystem() {
