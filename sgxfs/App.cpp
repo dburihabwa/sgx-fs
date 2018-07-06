@@ -175,18 +175,13 @@ int sgxfs_create(const char *path, mode_t mode, struct fuse_file_info *) {
 
   int found;
   sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
-  if (found != -ENOENT) {
+  if (found == EEXIST) {
     cerr << "sgxfs_create(" << filename << "): Already exists" << endl;
     return -EEXIST;
   }
 
-  if ((mode & S_IFREG) == 0) {
-    cerr << "sgxfs_create(" << filename << "): Only files may be created"
-         << endl;
-    return -EINVAL;
-  }
   int retval;
-  sgx_status_t stattus = ramfs_create_file(ENCLAVE_ID, &retval, filename.c_str());
+  ramfs_create_file(ENCLAVE_ID, &retval, filename.c_str());
   return retval;
 }
 

@@ -267,7 +267,7 @@ size_t FileSystem::get_block_size() const {
 
 int FileSystem::get_number_of_entries(const std::string &directory) const {
   std::string pathname = clean_path(directory);
-  if (!pathname.empty() && !this->is_directory(pathname)) {
+  if (!this->is_directory(pathname)) {
     return -ENOENT;
   }
   try {
@@ -323,7 +323,7 @@ std::string FileSystem::get_directory(const std::string &path) {
   std::string absolute_path = clean_path(path);
   size_t pos = absolute_path.rfind("/");
   if (pos == std::string::npos) {
-    return "/";
+    return "";
   }
   return absolute_path.substr(0, pos);
 }
@@ -403,7 +403,7 @@ int enclave_is_file(const char* filename) {
   if (FILE_SYSTEM->is_file(cleaned_path)) {
     return EEXIST;
   }
-  if (cleaned_path.empty() || FILE_SYSTEM->is_directory(cleaned_path)) {
+  if (FILE_SYSTEM->is_directory(cleaned_path)) {
     return -EISDIR;
   }
   return -ENOENT;
@@ -445,15 +445,14 @@ int ramfs_get_number_of_entries() {
 
 int enclave_readdir(const char* path, char* entries, size_t length) {
   string directory = FileSystem::clean_path(path);
-  size_t i = 0;
-  const size_t offset = 256;
-  size_t number_of_entries = 0;
   std::vector<std::string> files;
   try {
     files = FILE_SYSTEM->readdir(directory);
   } catch (const std::exception&) {
     return -ENOENT;
   }
+  size_t i = 0;
+  size_t number_of_entries = 0;
   for (auto it = files.begin();
        it != files.end() && i < length;
        it++, number_of_entries++) {
