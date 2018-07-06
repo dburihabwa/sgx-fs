@@ -15,10 +15,6 @@
 #include "Enclave_t.h"
 #include "../utils/filesystem.hpp"
 
-#ifndef PATH_MAX
-  #define PATH_MAX 1024
-#endif /* PATH_MAX */
-
 FileSystem::FileSystem(const size_t block_size) {
   this->block_size = block_size;
   this->files = new std::map<std::string, std::vector<std::vector<char>*>*>();
@@ -276,6 +272,20 @@ int FileSystem::get_number_of_entries(const std::string &directory) const {
   }
 }
 
+bool FileSystem::is_file(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->files->find(cleaned_path) != this->files->end();
+}
+
+bool FileSystem::is_directory(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->directories->find(cleaned_path) != this->directories->end();
+}
+
+bool FileSystem::exists(const std::string &path) const {
+  return this->is_directory(path) || this->is_file(path);
+}
+
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
     std::string stripped = filename;
     while (stripped.length() > 0 && stripped.front() == '/') {
@@ -365,26 +375,6 @@ std::vector<std::string>* FileSystem::split_path(const std::string &path) {
     trimmed_path = clean_path(trimmed_path.substr(pos + 1, std::string::npos));
   }
   return tokens;
-}
-
-bool FileSystem::is_file(const std::string &path) const {
-  std::string cleaned_path = clean_path(path);
-  return this->files->find(cleaned_path) != this->files->end();
-}
-
-
-bool FileSystem::is_directory(const std::string &path) const {
-  std::string cleaned_path = clean_path(path);
-  return this->directories->find(cleaned_path) != this->directories->end();
-}
-
-bool FileSystem::exists(const std::string &path) const {
-  std::string cleaned_path = clean_path(path);
-  if (this->directories->find(cleaned_path) != this->directories->end() ||
-      this->files->find(cleaned_path) != this->files->end()) {
-    return true;
-  }
-  return false;
 }
 
 static FileSystem* FILE_SYSTEM;

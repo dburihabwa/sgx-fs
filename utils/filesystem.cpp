@@ -1,4 +1,4 @@
-#include "filesystem.hpp"
+#include "../utils/filesystem.hpp"
 
 #include <climits>
 
@@ -15,7 +15,6 @@ FileSystem::FileSystem(const size_t block_size) {
   this->directories = new std::map<std::string, bool>();
   (*this->directories)[""] = true;
 }
-
 
 FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* restored_files) {
   this->block_size = FileSystem::DEFAULT_BLOCK_SIZE;
@@ -83,7 +82,7 @@ int FileSystem::write(const std::string &path, const char *data, const size_t of
       return -ENOENT;
   }
   auto blocks = entry->second;
-  auto block_index = size_t(floor(offset / this->block_size));
+  size_t block_index = static_cast<size_t>(floor(static_cast<long double>(offset) / this->block_size));
   auto offset_in_block = offset % this->block_size;
   size_t written = 0;
   if (block_index < blocks->size()) {
@@ -111,7 +110,6 @@ int FileSystem::write(const std::string &path, const char *data, const size_t of
   }
   return written;
 }
-
 
 size_t FileSystem::get_file_size(const std::string &path) const {
   std::string cleaned_path = clean_path(path);
@@ -257,10 +255,29 @@ size_t FileSystem::get_block_size() const {
 
 int FileSystem::get_number_of_entries(const std::string &directory) const {
   std::string pathname = clean_path(directory);
-  if (!pathname.empty() && !this->is_directory(pathname)) {
+  if (!this->is_directory(pathname)) {
     return -ENOENT;
   }
-  return this->readdir(pathname).size();
+  try {
+    auto entries = this->readdir(pathname);
+    return entries.size();
+  } catch (const std::runtime_error&) {
+    return -ENOENT;
+  }
+}
+
+bool FileSystem::is_file(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->files->find(cleaned_path) != this->files->end();
+}
+
+bool FileSystem::is_directory(const std::string &path) const {
+  std::string cleaned_path = clean_path(path);
+  return this->directories->find(cleaned_path) != this->directories->end();
+}
+
+bool FileSystem::exists(const std::string &path) const {
+  return this->is_directory(path) || this->is_file(path);
 }
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
@@ -304,22 +321,11 @@ std::string FileSystem::get_relative_path(const std::string &directory, const st
     return clean_path(file_path.substr(directory_path.length(), std::string::npos));
 }
 
-/**
- * Returns a full path to the library
- * @param path Path to interpret
- * @return Absolute path
- */
-std::string FileSystem::get_absolute_path(const std::string &path) {
-  char absolute_path[PATH_MAX];
-  realpath(path.c_str(), absolute_path);
-  return std::string(absolute_path);
-}
-
 std::string FileSystem::get_directory(const std::string &path) {
-  std::string absolute_path = get_absolute_path(path);
+  std::string absolute_path = clean_path(path);
   size_t pos = absolute_path.rfind("/");
   if (pos == std::string::npos) {
-    return "/";
+    return "";
   }
   return absolute_path.substr(0, pos);
 }
@@ -341,20 +347,6 @@ bool FileSystem::is_in_directory(const std::string &directory, const std::string
         return false;
     }
     return true;
-}
-
-bool FileSystem::is_file(const std::string &path) const {
-  std::string cleaned_path = clean_path(path);
-  return this->files->find(cleaned_path) != this->files->end();
-}
-
-bool FileSystem::is_directory(const std::string &path) const {
-  std::string cleaned_path = clean_path(path);
-  return this->directories->find(cleaned_path) != this->directories->end();
-}
-
-bool FileSystem::exists(const std::string &path) const {
-  return this->is_directory(path) || this->is_file(path);
 }
 
 std::vector<std::string>* FileSystem::split_path(const std::string &path) {
