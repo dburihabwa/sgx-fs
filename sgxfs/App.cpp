@@ -64,7 +64,7 @@ static int sgxfs_getattr(const char *path, struct stat *stbuf) {
   return res;
 }
 
-static std::vector<std::string> tokenize(const string list_of_entries, const char separator) {
+static std::vector<std::string> tokenize(const string &list_of_entries, const char separator) {
   string entries(list_of_entries);
   std::vector<std::string> filenames;
   size_t pos = 0;
@@ -135,7 +135,7 @@ static int sgxfs_read(const char *path, char *buf, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
+  enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
 
   if (found == -ENOENT) {
     cerr << "[sgxfs_read] " << filename << ": Not found" << endl;
@@ -143,7 +143,7 @@ static int sgxfs_read(const char *path, char *buf, size_t size, off_t offset,
   }
 
   int read;
-  status = ramfs_get(ENCLAVE_ID, &read, filename.c_str(), (long) offset, size, buf);
+  ramfs_get(ENCLAVE_ID, &read, filename.c_str(), (long) offset, size, buf);
   return read;
 }
 
@@ -152,15 +152,14 @@ int sgxfs_write(const char *path, const char *data, size_t size, off_t offset,
   string filename = strip_leading_slash(path);
 
   int found;
-  sgx_status_t status = enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
+  enclave_is_file(ENCLAVE_ID, &found, filename.c_str());
   if (found == -ENOENT) {
     cerr << "[sgxfs_write] " << filename << ": Not found" << endl;
     return -ENOENT;
   }
 
   int written;
-  status = ramfs_put(ENCLAVE_ID, &written, filename.c_str(), (long) offset, size, data);
-
+  ramfs_put(ENCLAVE_ID, &written, filename.c_str(), (long) offset, size, data);
   return written;
 }
 
@@ -307,26 +306,22 @@ void* sgxfs_init(struct fuse_conn_info *conn) {
 
 static void dump_fs(const string &path) {
   int number_of_entries;
-  sgx_status_t status = ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
+  ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
   const size_t step = 256;
   const size_t buffer_length = number_of_entries * step;
   char *entries = new char[buffer_length];
   int size;
-  status = enclave_readdir(ENCLAVE_ID, &size, "/", entries, buffer_length);
+  enclave_readdir(ENCLAVE_ID, &size, "/", entries, buffer_length);
 
   for (size_t i = 0; i < buffer_length; i += step) {
     char* entry = entries + (i * sizeof(char));
     string pathname(entry);
     int file_size;
-    status = ramfs_get_size(ENCLAVE_ID, &file_size, pathname.c_str());
+    ramfs_get_size(ENCLAVE_ID, &file_size, pathname.c_str());
     size_t sealed_size = sizeof(sgx_sealed_data_t) + file_size;
     sgx_sealed_data_t* sealed_data = reinterpret_cast<sgx_sealed_data_t*>(malloc(sealed_size));
     int ret;
-    status = sgxfs_dump(ENCLAVE_ID,
-                        &ret,
-                        pathname.c_str(),
-                        sealed_data,
-                        sealed_size);
+    sgxfs_dump(ENCLAVE_ID, &ret, pathname.c_str(), sealed_data, sealed_size);
     string dump_pathname = path + "/" + pathname;
     dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
     free(sealed_data);
