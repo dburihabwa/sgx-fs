@@ -134,7 +134,7 @@ Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) $(Enclave_Cpp_Flags) -Wl,--no-undefin
 	-Wl,--defsym,__ImageBase=0
 	# -Wl,--version-script=Enclave/Enclave.lds
 
-Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o)
+Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o) Enclave/filesystem.o
 
 Enclave_Name := enclave.so
 Signed_Enclave_Name := enclave.signed.so
@@ -241,6 +241,10 @@ Enclave/Enclave_t.o: Enclave/Enclave_t.c
 	@echo "CC   <=  $<"
 
 Enclave/%.o: Enclave/%.cpp
+	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
+	@echo "CXX  <=  $<"
+
+Enclave/filesystem.o: utils/filesystem.cpp
 	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
