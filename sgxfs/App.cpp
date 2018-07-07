@@ -300,17 +300,19 @@ void* sgxfs_init(struct fuse_conn_info *conn) {
 }
 
 static void dump_fs(const string &path) {
+  // TODO(dburihabwa) Support dumping of files and directories in a hierarchy
   int number_of_entries;
   ramfs_get_number_of_entries(ENCLAVE_ID, &number_of_entries);
   const size_t step = 256;
   const size_t buffer_length = number_of_entries * step;
-  char *entries = new char[buffer_length];
+  char* raw_entries = new char[buffer_length];
   int size;
-  enclave_readdir(ENCLAVE_ID, &size, "/", entries, buffer_length);
+  enclave_readdir(ENCLAVE_ID, &size, "/", raw_entries, buffer_length);
+  auto entries = tokenize(string(raw_entries), 0x1C);
+  delete [] raw_entries;
 
-  for (size_t i = 0; i < buffer_length; i += step) {
-    char* entry = entries + (i * sizeof(char));
-    string pathname(entry);
+  for (auto it = entries.begin(); it != entries.end(); it++) {
+    string pathname = (*it);
     int file_size;
     ramfs_get_size(ENCLAVE_ID, &file_size, pathname.c_str());
     size_t sealed_size = sizeof(sgx_sealed_data_t) + file_size;
@@ -318,10 +320,11 @@ static void dump_fs(const string &path) {
     int ret;
     sgxfs_dump(ENCLAVE_ID, &ret, pathname.c_str(), sealed_data, sealed_size);
     string dump_pathname = path + "/" + pathname;
+    cout << "Dumping " << pathname << " in " << dump_pathname << " ... ";
     dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
+    cout << "done" << endl;
     free(sealed_data);
   }
-  delete [] entries;
 }
 
 void sgxfs_destroy(void* private_data) {
