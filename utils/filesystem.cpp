@@ -34,9 +34,11 @@ FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* 
 }
 
 FileSystem::~FileSystem() {
-  for (auto it = this->files->begin(); it != this->files->end(); it++) {
+  auto it = this->files->begin();
+  while (it != this->files->end()) {
     auto blocks = it->second;
-    for (auto block = blocks->begin(); block != blocks->end(); block++) {
+    auto block = blocks->begin();
+    while (block != blocks->end()) {
       block = blocks->erase(block);
     }
     it = this->files->erase(it);
