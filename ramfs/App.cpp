@@ -36,7 +36,6 @@ static Logger LOGGER("./ramfs.log");
 
 static int ramfs_getattr(const char *path, struct stat *stbuf) {
     string filename = FileSystem::clean_path(path);
-    cout << "ramfs_getattr(" << filename << ")" << endl;
 
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_uid = getuid();
@@ -61,7 +60,7 @@ static int ramfs_getattr(const char *path, struct stat *stbuf) {
 
 static int ramfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                          off_t offset, struct fuse_file_info *fi) {
-    string pathname = clean_path(path);
+    string pathname = FileSystem::clean_path(path);
     if (FILE_SYSTEM->is_file(pathname)) {
         return -ENOTDIR;
     }
@@ -87,7 +86,7 @@ static int ramfs_open(const char *path, struct fuse_file_info *fi) {
 
 static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
-    string filename = clean_path(path);
+    string filename = FileSystem::clean_path(path);
     string log_line_header = "ramfs_read(" + filename + \
                               ", offset=" + to_string(offset) + \
                               ", size=" + to_string(size) + ")";
@@ -104,7 +103,7 @@ static int ramfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 int ramfs_write(const char *path, const char *data, size_t size, off_t offset,
                 struct fuse_file_info *) {
-    string filename = clean_path(path);
+    string filename = FileSystem::clean_path(path);
     const string header = "ramfs_write(" + filename + ", offset=" + to_string(offset) + ", size=" + to_string(size) + ")";
     auto start = chrono::high_resolution_clock::now();
     size_t written = FILE_SYSTEM->write(filename, data, offset, size);
