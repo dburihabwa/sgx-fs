@@ -50,17 +50,18 @@ static void make_directory(const std::string &path) {
   make_parent_directory(new_path);
 }
 
-void dump_map(const std::map<std::string, std::vector < std::vector < char>*>*> &files, const std::string &directory_path) {
+void dump_map(const std::map<std::string, std::vector < std::vector < char>*>*> *files, const std::string &directory_path) {
   if (!is_a_directory(directory_path)) {
     make_directory(directory_path);
   }
-  for (auto it = files.begin(); it != files.end(); it++) {
+  for (auto it = files->begin(); it != files->end(); it++) {
     std::vector<std::vector<char>*>* blocks = it->second;
     std::vector<char> buffer;
     for (auto b = blocks->begin(); b != blocks->end(); b++) {
       std::vector<char>* block = (*b);
       buffer.insert(buffer.end(), block->begin(), block->end());
     }
+    cout << it->first << " -> " << buffer.size() << " bytes" << endl;
     const std::string dump_path = directory_path + "/" + it->first;
     make_parent_directory(dump_path);
 
