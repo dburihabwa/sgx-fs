@@ -13,6 +13,7 @@ class FileSystem {
   public:
     static const size_t DEFAULT_BLOCK_SIZE = 4096;
 
+    FileSystem();
     explicit FileSystem(const size_t block_size);
     explicit FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* restored_files);
     ~FileSystem();
@@ -42,6 +43,7 @@ class FileSystem {
     int get_number_of_entries(const std::string &directory) const;
     size_t get_block_size() const;
     void set_files();
+    std::map<std::string, std::vector<std::vector<char>*>*>* get_files() const;
 // Path static util functions
     /**
      * Returns a copy of filename without the leading slash

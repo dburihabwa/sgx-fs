@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+FileSystem::FileSystem(): FileSystem(DEFAULT_BLOCK_SIZE) {
+}
+
 FileSystem::FileSystem(const size_t block_size) {
   this->block_size = block_size;
   this->files = new std::map<std::string, std::vector<std::vector<char>*>*>();
@@ -16,10 +19,8 @@ FileSystem::FileSystem(const size_t block_size) {
   (*this->directories)[""] = true;
 }
 
-FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* restored_files) {
-  this->block_size = FileSystem::DEFAULT_BLOCK_SIZE;
-  this->files = restored_files;
-  this->directories = new std::map<std::string, bool>();
+FileSystem::FileSystem(std::map<std::string, std::vector<std::vector<char>*>*>* files): FileSystem(DEFAULT_BLOCK_SIZE) {
+  this->files = files;
   for (auto it = this->files->begin(); it != this->files->end(); it++) {
     std::string filename = it->first;
     std::vector<std::string>* tokens = split_path(filename);
@@ -40,8 +41,8 @@ FileSystem::~FileSystem() {
     }
     it = this->files->erase(it);
   }
-  delete files;
-  delete directories;
+  delete this->files;
+  delete this->directories;
 }
 
 int FileSystem::create(const std::string &path) {
@@ -279,6 +280,12 @@ bool FileSystem::is_directory(const std::string &path) const {
 bool FileSystem::exists(const std::string &path) const {
   return this->is_directory(path) || this->is_file(path);
 }
+
+std::map<std::string, std::vector<std::vector<char>*>*>* FileSystem::get_files() const {
+  return this->files;
+}
+
+// Path static util functions
 
 std::string FileSystem::strip_leading_slash(const std::string &filename) {
     std::string stripped = filename;
