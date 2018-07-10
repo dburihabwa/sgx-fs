@@ -4,6 +4,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <cstring>
+
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -186,29 +188,34 @@ std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const s
     make_directory(path);
   }
   auto files_on_disk = list_files(path);
-  auto grouped_blocks = group_blocks_by_file((*files_on_disk));
-  auto files = new std::map<std::string, vector<sgx_sealed_data_t*>*>();
-  delete files_on_disk;
-  for (auto it = grouped_blocks.begin(); it != grouped_blocks.end(); it++) {
-    string filename = it->first;
-    auto blocks = it->second;
+  auto files = new std::map<std::string, std::vector<sgx_sealed_data_t*>*>();
+  for (auto it = files_on_disk->begin(); it != files_on_disk->end(); it++) {
+    string filename = (*it);
+    cout << "Restoring " << filename << endl;
     auto sealed_blocks = new vector<sgx_sealed_data_t*>();
-    for (auto b = blocks.begin(); b != blocks.end(); b++) {
-      auto block_path = (*b);
-      std::ifstream stream;
-      stream.open(block_path, std::ios::binary);
-      stream.seekg(0, std::ios::end);
-      size_t restored = stream.tellg();
-      stream.seekg(stream.beg);
-      auto block = reinterpret_cast<sgx_sealed_data_t*>(malloc(restored));
-      stream.read(reinterpret_cast<char*>(block), restored);
-      stream.close();
+    std::ifstream stream;
+    stream.open(filename, std::ios::binary);
+    stream.seekg(0, std::ios::end);
+    size_t restored = stream.tellg();
+    stream.seekg(stream.beg);
+    char* file = new char[restored];
+    stream.read(file, restored);
+    stream.close();
+    auto default_block_size = sizeof(sgx_sealed_data_t) + 4096;
+    for (size_t i = 0; i < restored; i += default_block_size) {
+      auto block_size = default_block_size;
+      if ((i + default_block_size) > restored) {
+        block_size = restored - i;
+      }
+      sgx_sealed_data_t* block = reinterpret_cast<sgx_sealed_data_t*>(malloc(block_size));
+      memcpy(block, file + i, block_size);
       sealed_blocks->push_back(block);
     }
+    delete [] file;
     filename = clean_path(filename.substr(path.length(), string::npos));
-
     (*files)[filename] = sealed_blocks;
   }
+  delete files_on_disk;
   return files;
 }
 

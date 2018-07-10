@@ -547,10 +547,32 @@ void* init(struct fuse_conn_info *conn) {
   return FILES;
 }
 
+static void dump_fs(const string &path) {
+  // TODO(dburihabwa) Support dumping of files and directories in a hierarchy
+  for (auto it = FILES->begin(); it != FILES->end(); it++) {
+    auto pathname = it->first;
+    auto blocks = it->second;
+    auto sealed_size = compute_file_size(blocks) + (blocks->size() * sizeof(sgx_sealed_data_t));
+    auto dump_pathname = path + "/" + pathname;
+    char* sealed_data = new char[sealed_size];
+    size_t offset = 0;
+    for (auto b = blocks->begin(); b != blocks->end(); b++) {
+      sgx_sealed_data_t* block = (*b);
+      auto block_size = sizeof(sgx_sealed_data_t) + block->aes_data.payload_size;
+      memcpy(sealed_data + offset, reinterpret_cast<char*>(block), block_size);
+      offset += block_size;
+    }
+    cout << "Dumping " << pathname << " in " << dump_pathname << " ... ";
+    dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
+    cout << "done" << endl;
+    free(sealed_data);
+  }
+}
+
 void destroy(void* unused_private_data) {
   Logger init_log("sgx-ramfs-mount.log");
   chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
-  dump_sgx_map((*FILES), "sgx_ramfs_dump");
+  dump_fs("sgx_ramfs_dump");
   sgx_destroy_enclave(ENCLAVE_ID);
   chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
   auto duration = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
