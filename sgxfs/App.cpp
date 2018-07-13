@@ -320,9 +320,7 @@ static void dump_fs(const string &path) {
     int ret;
     sgxfs_dump(ENCLAVE_ID, &ret, pathname.c_str(), sealed_data, sealed_size);
     string dump_pathname = path + "/" + pathname;
-    cout << "Dumping " << pathname << " in " << dump_pathname << " ... ";
     dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
-    cout << "done" << endl;
     free(sealed_data);
   }
 }

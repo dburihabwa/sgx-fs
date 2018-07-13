@@ -63,7 +63,6 @@ void dump_map(const std::map<std::string, std::vector < std::vector < char>*>*> 
       std::vector<char>* block = (*b);
       buffer.insert(buffer.end(), block->begin(), block->end());
     }
-    cout << it->first << " -> " << buffer.size() << " bytes" << endl;
     const std::string dump_path = directory_path + "/" + it->first;
     make_parent_directory(dump_path);
 
@@ -83,7 +82,6 @@ size_t restore(const std::string &path, char* buffer) {
   buffer = new char[size];
   stream.read(buffer, size);
   stream.close();
-  cout << "restore(" << path << ") = "<< buffer << endl;
   return size;
 }
 
@@ -163,26 +161,6 @@ void dump_sgx_map(const std::map<std::string, std::vector<sgx_sealed_data_t*>*> 
   }
 }
 
-static map<string, vector<string>> group_blocks_by_file(const vector<string> &blocks) {
-  map<string, vector<string>> groups;
-  for (auto it = blocks.begin(); it != blocks.end(); it++) {
-    string block = (*it);
-    auto index_separator = block.find_last_of("-");
-    if (index_separator == string::npos) {
-      throw runtime_error("Could not find index separator '-' in " + block);
-    }
-    string filename = clean_path(block.substr(0, index_separator));
-    auto entry = groups.find(filename);
-    vector<string> grouped_blocks;
-    if (entry != groups.end()) {
-      grouped_blocks = entry->second;
-    }
-    grouped_blocks.push_back(block);
-    groups[filename] = grouped_blocks;
-  }
-  return groups;
-}
-
 std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const std::string &path) {
   if (!is_a_directory(path)) {
     make_directory(path);
@@ -191,7 +169,6 @@ std::map<std::string, std::vector<sgx_sealed_data_t*>*>* restore_sgx_map(const s
   auto files = new std::map<std::string, std::vector<sgx_sealed_data_t*>*>();
   for (auto it = files_on_disk->begin(); it != files_on_disk->end(); it++) {
     string filename = (*it);
-    cout << "Restoring " << filename << endl;
     auto sealed_blocks = new vector<sgx_sealed_data_t*>();
     std::ifstream stream;
     stream.open(filename, std::ios::binary);

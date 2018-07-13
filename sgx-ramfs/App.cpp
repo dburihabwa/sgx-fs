@@ -48,7 +48,6 @@ static Logger LOGGER("./sgx-ramfs.log");
 static size_t compute_file_size(vector<sgx_sealed_data_t *>* data) {
     size_t size = 0;
     size_t counter = 0;
-    cout << "Sealed blocks " << convert_pointer_to_string(data) << endl;
     for (auto it = data->begin(); it != data->end(); it++) {
         sgx_sealed_data_t* block = (*it);
         size += block->aes_data.payload_size;
@@ -562,9 +561,7 @@ static void dump_fs(const string &path) {
       memcpy(sealed_data + offset, reinterpret_cast<char*>(block), block_size);
       offset += block_size;
     }
-    cout << "Dumping " << pathname << " in " << dump_pathname << " ... ";
     dump(reinterpret_cast<char*>((sealed_data)), dump_pathname, sealed_size);
-    cout << "done" << endl;
     free(sealed_data);
   }
 }
