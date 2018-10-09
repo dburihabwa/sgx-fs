@@ -69,3 +69,4 @@ enclave.token
 
 # Logs
 *.log
+papers/
